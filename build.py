@@ -165,7 +165,7 @@ font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,
 .nt{{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;border-radius:50%;
 background:{tbg};color:{tt}!important;font-weight:700;font-size:22px;float:right;padding:0 7px}}
 .ev{{font-size:16px;font-weight:600;color:{tp};background:{eb};border-left:4px solid {ebd};
-border-radius:4px;padding:3px 7px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}}
+border-radius:4px;padding:3px 7px;margin-top:3px;white-space:normal;word-break:break-word;overflow:hidden;line-height:1.3}}
 .em{{font-size:14px;font-weight:700;color:{dc};padding:2px 6px;margin-top:2px}}
 .su .n{{color:{sun_c}}}.sa .n{{color:{sat_c}}}.e .n{{color:{tm}}}.nt{{color:{tt}!important}}
 </style></head><body>
