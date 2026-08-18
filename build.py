@@ -104,7 +104,7 @@ def build_html(theme, today, month_events, year, month):
 
     # Theme palette
     if theme == "night":
-        bg = "#000000"
+        bg = "transparent"
         tp = "#f59e0b"; tm = "#92400e"
         tbg = "#78350f"; tt = "#fef3c7"
         eb = "rgba(245,158,11,0.1)"; ebd = "#b45309"
@@ -112,7 +112,7 @@ def build_html(theme, today, month_events, year, month):
         dc = "#f59e0b"
         sun_c = "#ef4444"; sat_c = "#60a5fa"
     else:  # day / Spa White
-        bg = "#f8f9fa"
+        bg = "transparent"
         tp = "#1e293b"; tm = "#94a3b8"
         tbg = "#0f172a"; tt = "#ffffff"
         eb = "#f1f5f9"; ebd = "#64748b"
