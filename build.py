@@ -152,21 +152,21 @@ html,body{{width:100%;height:100%;background:{bg};
 font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 -webkit-font-smoothing:antialiased;overflow:hidden}}
 .w{{width:100%;height:100%;display:flex;flex-direction:column}}
-.h{{display:flex;align-items:baseline;padding:12px 14px 8px;gap:8px;flex-shrink:0}}
-.h b{{font-size:36px;font-weight:700;color:{tp};letter-spacing:-.4px}}
-.h span{{font-size:36px;font-weight:300;color:{tm}}}
-.dr{{display:grid;grid-template-columns:repeat(7,1fr);flex-shrink:0;border-bottom:2px solid {hb}}}
-.d{{font-size:18px;font-weight:700;color:{tm};text-transform:uppercase;letter-spacing:1px;text-align:center;padding:8px 0}}
+.h{{display:flex;align-items:baseline;padding:16px 18px 10px;gap:10px;flex-shrink:0}}
+.h b{{font-size:48px;font-weight:700;color:{tp};letter-spacing:-.4px}}
+.h span{{font-size:48px;font-weight:300;color:{tm}}}
+.dr{{display:grid;grid-template-columns:repeat(7,1fr);flex-shrink:0;border-bottom:3px solid {hb}}}
+.d{{font-size:24px;font-weight:700;color:{tm};text-transform:uppercase;letter-spacing:1px;text-align:center;padding:10px 0}}
 .g{{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat({nr},1fr)}}
-.c{{padding:4px 6px 2px;border-right:1px solid {gb};border-bottom:1px solid {gb};overflow:hidden;min-height:0}}
+.c{{padding:6px 8px 4px;border-right:1px solid {gb};border-bottom:1px solid {gb};overflow:hidden;min-height:0}}
 .c:nth-child(7n){{border-right:none}}
 .c.e{{opacity:.2}}
-.n{{display:block;font-size:24px;font-weight:600;color:{tp};text-align:right;line-height:1;padding:2px 4px 4px 0}}
-.nt{{display:inline-flex;align-items:center;justify-content:center;min-width:36px;height:36px;border-radius:50%;
-background:{tbg};color:{tt}!important;font-weight:700;font-size:22px;float:right;padding:0 7px}}
-.ev{{font-size:16px;font-weight:600;color:{tp};background:{eb};border-left:4px solid {ebd};
-border-radius:4px;padding:3px 7px;margin-top:3px;white-space:normal;word-break:break-word;overflow:hidden;line-height:1.3}}
-.em{{font-size:14px;font-weight:700;color:{dc};padding:2px 6px;margin-top:2px}}
+.n{{display:block;font-size:32px;font-weight:600;color:{tp};text-align:right;line-height:1;padding:3px 5px 5px 0}}
+.nt{{display:inline-flex;align-items:center;justify-content:center;min-width:48px;height:48px;border-radius:50%;
+background:{tbg};color:{tt}!important;font-weight:700;font-size:28px;float:right;padding:0 8px}}
+.ev{{font-size:22px;font-weight:600;color:{tp};background:{eb};border-left:5px solid {ebd};
+border-radius:5px;padding:4px 8px;margin-top:4px;white-space:normal;word-break:break-word;overflow:hidden;line-height:1.3}}
+.em{{font-size:18px;font-weight:700;color:{dc};padding:2px 6px;margin-top:2px}}
 .su .n{{color:{sun_c}}}.sa .n{{color:{sat_c}}}.e .n{{color:{tm}}}.nt{{color:{tt}!important}}
 </style></head><body>
 <div class="w">
