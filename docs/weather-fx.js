@@ -12,6 +12,90 @@ function lerpHex(a, b, t) {
   return '#' + r.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
 }
 
+// ---------------------------------------------------------------------
+// Procedural fractal (Perlin) noise -> real volumetric cloud texture,
+// instead of flat circle blobs. This is what makes overcast/storm skies
+// actually read as a solid cloud ceiling rather than a few gray dots.
+// ---------------------------------------------------------------------
+class PerlinNoise2D {
+  constructor(seed) {
+    this.perm = new Uint8Array(512);
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    let s = seed || 1337;
+    const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    for (let i = 255; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+    for (let i = 0; i < 512; i++) this.perm[i] = p[i & 255];
+  }
+  static _fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+  static _lerp(a, b, t) { return a + t * (b - a); }
+  static _grad(hash, x, y) {
+    const h = hash & 3;
+    const u = h < 2 ? x : y, v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -2 * v : 2 * v);
+  }
+  noise(x, y) {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+    x -= Math.floor(x); y -= Math.floor(y);
+    const u = PerlinNoise2D._fade(x), v = PerlinNoise2D._fade(y);
+    const p = this.perm;
+    const aa = p[X + p[Y]], ab = p[X + p[Y + 1]], ba = p[X + 1 + p[Y]], bb = p[X + 1 + p[Y + 1]];
+    return PerlinNoise2D._lerp(
+      PerlinNoise2D._lerp(PerlinNoise2D._grad(aa, x, y), PerlinNoise2D._grad(ba, x - 1, y), u),
+      PerlinNoise2D._lerp(PerlinNoise2D._grad(ab, x, y - 1), PerlinNoise2D._grad(bb, x - 1, y - 1), u),
+      v
+    );
+  }
+  // Fractal Brownian Motion: layered octaves for realistic cloud detail
+  fbm(x, y, octaves, lacunarity, gain) {
+    let amp = 0.5, freq = 1, sum = 0, norm = 0;
+    for (let i = 0; i < octaves; i++) {
+      sum += amp * this.noise(x * freq, y * freq);
+      norm += amp;
+      amp *= gain;
+      freq *= lacunarity;
+    }
+    return sum / norm; // roughly -1..1
+  }
+}
+
+// Builds a seamless-horizontally-tileable cloud density texture as an
+// offscreen canvas: bright/opaque where clouds are thick, transparent
+// where sky shows through. Used for real volumetric-looking cloud decks.
+function buildCloudTexture(width, height, seed, coverage, softness) {
+  const noise = new PerlinNoise2D(seed);
+  const off = document.createElement('canvas');
+  off.width = width; off.height = height;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(width, height);
+  const scale = 0.006; // spatial frequency of the base cloud shapes
+  for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
+      // Sample on a cylinder (wrap x) so the texture tiles seamlessly
+      // when scrolled horizontally for drifting clouds.
+      const ang = (px / width) * Math.PI * 2;
+      const cx = Math.cos(ang) * (width * scale) / (Math.PI * 2) * (Math.PI * 2);
+      const nx = Math.cos(ang) / scale * 0.02, ny = Math.sin(ang) / scale * 0.02;
+      let n = noise.fbm(nx * 0.15 + 0, py * scale, 5, 2.0, 0.55);
+      n += noise.fbm(nx * 0.4, py * scale * 2.2, 3, 2.0, 0.5) * 0.3;
+      // Shape into cloud density: raise to a curve so we get soft puffy
+      // clumps with clear gaps, then bias by 'coverage' (0=clear,1=solid).
+      let density = (n + 1) / 2; // 0..1
+      density = Math.pow(density, 1.6);
+      density = (density - (0.55 - coverage * 0.55)) / Math.max(0.08, softness);
+      density = Math.max(0, Math.min(1, density));
+      const idx = (py * width + px) * 4;
+      img.data[idx] = 255; img.data[idx + 1] = 255; img.data[idx + 2] = 255;
+      img.data[idx + 3] = Math.round(density * 255);
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  return off;
+}
+
 class WeatherFX {
   constructor(canvas, colors) {
     this.canvas = canvas;
@@ -25,6 +109,8 @@ class WeatherFX {
     this.flashAlpha = 0;
     this.key = 'clear-day';
     this.sunElevation = 0.6; // -1 (midnight) .. 0 (horizon) .. 1 (noon), set from real sun data
+    this.cloudTexA = null; this.cloudTexB = null; // volumetric cloud deck layers
+    this.cloudOffsetA = 0; this.cloudOffsetB = 0;
     this._resize();
     window.addEventListener('resize', () => this._resize());
     this._raf = requestAnimationFrame(this._tick.bind(this));

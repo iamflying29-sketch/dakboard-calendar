@@ -3,6 +3,8 @@
 // CORS-enabled), so this page can sit as pure static hosting on GitHub
 // Pages with no build/cron step. Auto-refreshes itself on an interval.
 
+import { WeatherAtmosphere } from './weather-atmosphere.js';
+
 const LAT = 37.8732;
 const LON = -122.4566;
 const TZ = "America/Los_Angeles";
@@ -10,6 +12,7 @@ const REFRESH_MS = 15 * 60 * 1000; // 15 minutes
 const LOCATION_LABEL = "Tiburon, CA";
 
 const THEME = document.documentElement.getAttribute('data-theme') || 'day';
+const FORCED_SCENE = new URLSearchParams(location.search).get('scene');
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -174,29 +177,31 @@ function render(data, fx) {
 
   const isDay = !!cur.is_day;
   const info = wmoInfo(cur.weather_code, isDay);
+  const displayKey = FORCED_SCENE || info.key;
   const vars = {
+    theme: THEME,
     '--sun-core': cssVar('--sun-core'), '--moon-core': cssVar('--moon-core'),
     '--cloud': cssVar('--cloud'), '--cloud2': cssVar('--cloud2'),
     '--rain': cssVar('--rain'), '--snow': cssVar('--snow'), '--fog': cssVar('--fog'),
     '--bolt': cssVar('--bolt'), '--fg': cssVar('--fg'),
   };
 
-  document.getElementById('nowIcon').innerHTML = iconSvgFor(info.key, vars);
+  document.getElementById('nowIcon').innerHTML = iconSvgFor(displayKey, vars);
   document.getElementById('nowTemp').textContent = fToLabel(cur.temperature_2m);
-  document.getElementById('nowCond').textContent = info.label;
+  document.getElementById('nowCond').textContent = FORCED_SCENE ? `${info.label} (${displayKey})` : info.label;
   document.getElementById('nowSub').textContent = `Feels like ${fToLabel(cur.apparent_temperature)}`;
   document.getElementById('hilo').textContent =
     `H:${Math.round(daily.temperature_2m_max[TODAY_IDX])}°  L:${Math.round(daily.temperature_2m_min[TODAY_IDX])}°`;
 
-  if (fx) fx.setCondition(info.key);
+  if (fx) fx.setCondition(displayKey);
 
-  // Hourly strip: current hour + next 6
+  // Hourly strip: current hour + next 11
   const nowIso = weather.current.time;
   let startIdx = hourly.time.findIndex(t => t >= nowIso);
   if (startIdx < 0) startIdx = 0;
   const hourlyEl = document.getElementById('hourly');
   hourlyEl.innerHTML = '';
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 12; i++) {
     const idx = startIdx + i;
     if (idx >= hourly.time.length) break;
     const hIsDay = hourly.is_day ? !!hourly.is_day[idx] : true;
@@ -301,12 +306,15 @@ async function refresh() {
 
 function boot() {
   const canvas = document.getElementById('fx');
-  fxEngine = new WeatherFX(canvas, {
+  fxEngine = new WeatherAtmosphere(canvas, {
     sunCore: cssVar('--sun-core'), sunGlow: cssVar('--sun-glow'),
     moonCore: cssVar('--moon-core'), moonGlow: cssVar('--moon-glow'),
     cloud: cssVar('--cloud'), cloud2: cssVar('--cloud2'),
     rain: cssVar('--rain'), snow: cssVar('--snow'), fog: cssVar('--fog'),
     bolt: cssVar('--bolt'),
+  }, {
+    forceDay: THEME === 'day',
+    forceNight: THEME === 'night',
   });
   window.fxEngine = fxEngine;
   refresh();
