@@ -816,14 +816,15 @@ export class WeatherAtmosphere {
     }
 
     try {
-      // Keep the WebGL load modest on the DAKboard CPU v5: half-res render and
-      // a 25 fps cap. The shader still looks cinematic and the GPU stays stable.
+      // Keep the WebGL load modest on the DAKboard CPU v5: 0.4x res, 20 fps.
+      // The shader still looks cinematic and avoids context-lost stutter.
       this.sky = new Atmosphere(canvas, {
         time: this._now(),
         location: this.location,
         weather: WMO_ATMOSPHERE_TABLE[0],
-        resolutionScale: 0.5,
-        fps: 25,
+        resolutionScale: 0.4,
+        fps: 20,
+        colorSpace: 'srgb',
         celestial: { bortle: 6, milkyWay: 0, meteors: 0 },
       });
     } catch (err) {
