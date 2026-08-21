@@ -8,7 +8,11 @@ import { WeatherAtmosphere } from './weather-atmosphere.js';
 const LAT = 37.8991768;
 const LON = -122.4949685;
 const TZ = "America/Los_Angeles";
-const REFRESH_MS = 15 * 60 * 1000; // 15 minutes
+// Poll every 60 seconds for the latest Open-Meteo 15-minute current conditions.
+// Open-Meteo is the free, no-account provider that TRMNL also uses; the data
+// itself updates roughly every 15 minutes, so the display always shows the
+// freshest available value without needing an API key.
+const REFRESH_MS = 60 * 1000; // 15 minutes
 const LOCATION_LABEL = "Tiburon, CA";
 
 const THEME = document.documentElement.getAttribute('data-theme') || 'day';
