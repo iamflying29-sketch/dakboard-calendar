@@ -99,9 +99,9 @@ html, body {
 .ww-now { display: flex; align-items: center; gap: 6px; margin-top: 0; }
 .ww-icon { width: 104px; height: 104px; flex-shrink: 0; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.12)); }
 .weather-icon { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.18)); image-rendering: crisp-edges; }
-.ww-temp { font-size: 92px; font-weight: 200; letter-spacing: -3px; color: var(--fg); line-height: 1; text-shadow: 0 1px 2px rgba(255,255,255,0.35); }
-.ww-cond { font-size: 28px; font-weight: 700; color: var(--fg2); margin-top: -2px; }
-.ww-sub { font-size: 20px; font-weight: 600; color: var(--fg3); margin-top: 2px; }
+.ww-temp { font-size: 92px; font-weight: 200; letter-spacing: -3px; color: var(--fg); line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.25); }
+.ww-cond { font-size: 28px; font-weight: 700; color: var(--fg2); margin-top: -2px; text-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+.ww-sub { font-size: 20px; font-weight: 600; color: var(--fg3); margin-top: 2px; text-shadow: 0 1px 2px rgba(0,0,0,0.14); }
 
 /* ---------- Frosted glass panel ------------------------------------------ */
 .ww-panel {
