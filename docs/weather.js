@@ -199,8 +199,8 @@ function render(data, fx) {
   if (fx) fx.setCondition(displayKey);
 
   // Hourly strip: current hour + next 11
-  const nowIso = weather.current.time;
-  let startIdx = hourly.time.findIndex(t => t >= nowIso);
+  const nowHour = weather.current.time.slice(0, 13) + ':00';
+  let startIdx = hourly.time.findIndex(t => t >= nowHour);
   if (startIdx < 0) startIdx = 0;
   const hourlyEl = document.getElementById('hourly');
   hourlyEl.innerHTML = '';
