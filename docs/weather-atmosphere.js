@@ -748,7 +748,7 @@ class WeatherOverlay {
 
   _drawClearDay(ctx, w, h) {
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
+    ctx.globalCompositeOperation = 'source-over';
     for (const p of this.particles) {
       p.x += p.v; p.y += p.vy; p.life--;
       if (p.x > w + 20 || p.y < -20 || p.life <= 0) {
@@ -757,8 +757,10 @@ class WeatherOverlay {
         p.life = this._rand(180, 360);
       }
       const tw = 0.7 + 0.3 * Math.sin(this.t * 0.05 + p.x * 0.01);
-      ctx.fillStyle = `rgba(255,250,230,${p.op * tw})`;
+      ctx.globalAlpha = p.op * tw;
+      ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
