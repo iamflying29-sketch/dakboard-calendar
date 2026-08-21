@@ -5,8 +5,8 @@
 
 import { WeatherAtmosphere } from './weather-atmosphere.js';
 
-const LAT = 37.8732;
-const LON = -122.4566;
+const LAT = 37.8991768;
+const LON = -122.4949685;
 const TZ = "America/Los_Angeles";
 const REFRESH_MS = 15 * 60 * 1000; // 15 minutes
 const LOCATION_LABEL = "Tiburon, CA";

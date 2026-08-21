@@ -18,7 +18,7 @@ import { Atmosphere } from './atmosphere.js';
 // ---------------------------------------------------------------------------
 // Location: Tiburon, CA (matches weather.js)
 // ---------------------------------------------------------------------------
-const DEFAULT_LOCATION = { latitude: 37.8732, longitude: -122.4566 };
+const DEFAULT_LOCATION = { latitude: 37.8991768, longitude: -122.4949685 };
 
 // ---------------------------------------------------------------------------
 // Standard WMO weather codes (0-99) -> atmosphere parameters.
