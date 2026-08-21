@@ -12,13 +12,13 @@ html, body {
   --sky-top: #8ec9ee;
   --sky-mid: #bfe0f5;
   --sky-bottom: #f3f8fb;
-  --fg: #0f172a;
-  --fg2: #334155;
-  --fg3: #64748b;
-  --panel-bg: rgba(255,255,255,0.55);
-  --panel-border: rgba(15,23,42,0.08);
-  --card-fg: #0f172a;
-  --border: rgba(15,23,42,0.1);
+  --fg: #0a0f1a;
+  --fg2: #1e293b;
+  --fg3: #475569;
+  --panel-bg: rgba(255,255,255,0.65);
+  --panel-border: rgba(15,23,42,0.12);
+  --card-fg: #0a0f1a;
+  --border: rgba(15,23,42,0.12);
   --accent: #0f172a;
   --hi: #1e293b;
   --lo: #94a3b8;
@@ -94,14 +94,14 @@ html, body {
 }
 
 /* ---------- Header (no panel, floats over the sky like Apple Weather) --- */
-.ww-header { flex-shrink: 0; }
-.ww-loc { font-size: 19px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--fg3); text-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.ww-header { flex-shrink: 0; min-width: 0; }
+.ww-loc { font-size: 22px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--fg3); text-shadow: 0 1px 3px rgba(0,0,0,0.15); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ww-now { display: flex; align-items: center; gap: 6px; margin-top: 0; }
-.ww-icon { width: 96px; height: 96px; flex-shrink: 0; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.12)); }
+.ww-icon { width: 104px; height: 104px; flex-shrink: 0; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.12)); }
 .weather-icon { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.18)); image-rendering: crisp-edges; }
-.ww-temp { font-size: 84px; font-weight: 200; letter-spacing: -3px; color: var(--fg); line-height: 1; }
-.ww-cond { font-size: 23px; font-weight: 600; color: var(--fg2); margin-top: -4px; }
-.ww-sub { font-size: 17px; font-weight: 500; color: var(--fg3); margin-top: 1px; }
+.ww-temp { font-size: 92px; font-weight: 200; letter-spacing: -3px; color: var(--fg); line-height: 1; text-shadow: 0 1px 2px rgba(255,255,255,0.35); }
+.ww-cond { font-size: 28px; font-weight: 700; color: var(--fg2); margin-top: -2px; }
+.ww-sub { font-size: 20px; font-weight: 600; color: var(--fg3); margin-top: 2px; }
 
 /* ---------- Frosted glass panel ------------------------------------------ */
 .ww-panel {
@@ -113,10 +113,13 @@ html, body {
   box-shadow: var(--shadow);
   padding: 14px 16px;
   flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 .ww-panel-title {
-  font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+  font-size: 15px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
   color: var(--fg3); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  min-width: 0;
 }
 .ww-panel-title svg { width: 14px; height: 14px; }
 
@@ -130,20 +133,20 @@ html, body {
   gap: 2px;
 }
 .ww-hour { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
-.ww-hour .hh { font-size: 13px; font-weight: 700; color: var(--fg3); text-transform: uppercase; }
-.ww-hour svg, .ww-hour .weather-icon { width: 36px !important; height: 36px !important; flex-shrink: 0; }
-.ww-hour .ht { font-size: 16px; font-weight: 700; color: var(--fg); }
-.ww-hour .hp { font-size: 11px; font-weight: 700; color: var(--rain); min-height: 13px; }
+.ww-hour .hh { font-size: 15px; font-weight: 800; color: var(--fg3); text-transform: uppercase; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ww-hour svg, .ww-hour .weather-icon { width: 40px !important; height: 40px !important; flex-shrink: 0; }
+.ww-hour .ht { font-size: 19px; font-weight: 800; color: var(--fg); }
+.ww-hour .hp { font-size: 13px; font-weight: 800; color: var(--rain); min-height: 15px; }
 
 /* ---------- Daily forecast ------------------------------------------------ */
 .ww-daily { width: 100%; min-width: 0; }
-.ww-day-row { display: grid; grid-template-columns: 56px 28px minmax(0,1fr) 34px auto 34px; align-items: center; gap: 8px; padding: 6px 0; }
+.ww-day-row { display: grid; grid-template-columns: 58px 30px minmax(0,1fr) 38px auto 38px; align-items: center; gap: 8px; padding: 7px 0; min-width: 0; }
 .ww-day-row + .ww-day-row { border-top: 1px solid var(--border); }
-.ww-day-row .dn { font-size: 15px; font-weight: 700; color: var(--fg); }
-.ww-day-row svg, .ww-day-row .weather-icon { width: 32px !important; height: 32px !important; flex-shrink: 0; }
-.ww-day-row .dp { font-size: 12px; font-weight: 700; color: var(--rain); text-align: right; }
-.ww-day-row .dlo { font-size: 14px; font-weight: 600; color: var(--lo); text-align: right; }
-.ww-day-row .dhi { font-size: 14px; font-weight: 700; color: var(--hi); text-align: right; }
+.ww-day-row .dn { font-size: 17px; font-weight: 800; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-day-row svg, .ww-day-row .weather-icon { width: 34px !important; height: 34px !important; flex-shrink: 0; }
+.ww-day-row .dp { font-size: 14px; font-weight: 800; color: var(--rain); text-align: right; }
+.ww-day-row .dlo { font-size: 16px; font-weight: 700; color: var(--lo); text-align: right; }
+.ww-day-row .dhi { font-size: 16px; font-weight: 800; color: var(--hi); text-align: right; }
 .ww-bar { height: 4px; border-radius: 2px; background: var(--track); position: relative; overflow: hidden; }
 .ww-bar span { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: linear-gradient(90deg, #60a5fa, #f59e0b, #ef4444); opacity: .9; }
 
@@ -180,19 +183,19 @@ html, body {
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   box-shadow: var(--shadow);
-  padding: 10px 14px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
+  gap: 4px;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
 }
-.ww-card .cl { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--fg3); display: flex; align-items: center; gap: 6px; }
-.ww-card .cl svg, .ww-card .cl .weather-icon { width: 16px !important; height: 16px !important; flex-shrink: 0; }
-.ww-card .cv { font-size: 24px; font-weight: 700; color: var(--card-fg); }
-.ww-card .cs { font-size: 12px; font-weight: 600; color: var(--fg3); }
+.ww-card .cl { font-size: 13px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--fg3); display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ww-card .cl svg, .ww-card .cl .weather-icon { width: 18px !important; height: 18px !important; flex-shrink: 0; }
+.ww-card .cv { font-size: 28px; font-weight: 800; color: var(--card-fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ww-card .cs { font-size: 14px; font-weight: 700; color: var(--fg3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Wind compass */
 .ww-compass { width: 46px; height: 46px; position: relative; margin: 2px 0; }

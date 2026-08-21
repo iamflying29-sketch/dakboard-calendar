@@ -147,7 +147,10 @@ function dayLabel(dateStr, idx) {
 }
 
 async function fetchWeather() {
-  const wUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+  // cell_selection=land prefers the nearest land model cell for coastal places
+  // like Tiburon, avoiding spurious over-water forecast values.
+  const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
+  const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m` +
     `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +

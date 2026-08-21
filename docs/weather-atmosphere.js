@@ -81,10 +81,10 @@ const WMO_ATMOSPHERE_TABLE = {
 // Internal key mapping (matches weather-icons.js keys) -> WMO-ish parameters.
 // ---------------------------------------------------------------------------
 const KEY_TABLE = {
-  'clear-day':          WMO_ATMOSPHERE_TABLE[0],
-  'clear-night':        WMO_ATMOSPHERE_TABLE[0],
-  'mostly-clear-day':   WMO_ATMOSPHERE_TABLE[1],
-  'mostly-clear-night': WMO_ATMOSPHERE_TABLE[1],
+  'clear-day':          { ...WMO_ATMOSPHERE_TABLE[0], overlay: 'clear-day', cloudCover: 0.03, windSpeed: 3 },
+  'clear-night':        { ...WMO_ATMOSPHERE_TABLE[0], overlay: 'clear-night', cloudCover: 0.0, windSpeed: 2 },
+  'mostly-clear-day':   { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.15, windSpeed: 3 },
+  'mostly-clear-night': { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.10, windSpeed: 2 },
   'partly-cloudy-day':  WMO_ATMOSPHERE_TABLE[2],
   'partly-cloudy-night':WMO_ATMOSPHERE_TABLE[2],
   'overcast':           WMO_ATMOSPHERE_TABLE[3],
@@ -173,18 +173,21 @@ class WeatherOverlay {
     this.w = 0;
     this.h = 0;
     this.particles = [];
+    this.lastTick = 0;
+    // Keep the overlay cheap on the CPU v5: 0.5x DPR and 20 fps cap.
+    this.dpr = Math.min(typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1, 1.5) * 0.5;
+    this.fps = 20;
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this._tick();
   }
 
   resize() {
-    const dpr = window.devicePixelRatio || 1;
     this.w = this.canvas.clientWidth || window.innerWidth;
     this.h = this.canvas.clientHeight || window.innerHeight;
-    this.canvas.width = Math.floor(this.w * dpr);
-    this.canvas.height = Math.floor(this.h * dpr);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.canvas.width = Math.floor(this.w * this.dpr);
+    this.canvas.height = Math.floor(this.h * this.dpr);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 
   setEffect(effect) {
@@ -192,11 +195,12 @@ class WeatherOverlay {
     this.t = 0;
     this.particles = [];
     // Pre-seed particles based on effect
-    if (effect && ['sand','dust','ash','smoke','haze','snow-blizzard','volcano','landslide','mudslide','avalanche','rockfall','earthquake','tsunami','acid-rain','fire'].includes(effect)) {
+    if (effect && ['clear-day','clear-night','sand','dust','ash','smoke','haze','snow-blizzard','volcano','landslide','mudslide','avalanche','rockfall','earthquake','tsunami','acid-rain','fire'].includes(effect)) {
       const count = {
-        sand: 800, dust: 600, ash: 500, smoke: 350, haze: 200, 'snow-blizzard': 900,
-        volcano: 700, landslide: 500, mudslide: 600, avalanche: 800, rockfall: 350, earthquake: 400, tsunami: 0,
-        'acid-rain': 180, fire: 250
+        'clear-day': 35, 'clear-night': 60,
+        sand: 300, dust: 250, ash: 200, smoke: 150, haze: 100, 'snow-blizzard': 400,
+        volcano: 300, landslide: 250, mudslide: 300, avalanche: 400, rockfall: 200, earthquake: 250, tsunami: 0,
+        'acid-rain': 120, fire: 150
       }[effect] || 300;
       for (let i = 0; i < count; i++) this.particles.push(this._newParticle(effect));
     }
@@ -213,6 +217,10 @@ class WeatherOverlay {
   _newParticle(effect) {
     const w = this.w, h = this.h;
     switch (effect) {
+      case 'clear-day':
+        return { x: this._rand(0, w), y: this._rand(0, h), r: this._rand(0.8, 2.2), v: this._rand(0.2, 0.6), vy: this._rand(-0.1, 0.1), op: this._rand(0.15, 0.35), life: this._rand(120, 240), type: 'clear-day' };
+      case 'clear-night':
+        return { x: this._rand(0, w), y: this._rand(0, h * 0.6), r: this._rand(0.6, 1.6), v: this._rand(0.05, 0.15), vy: this._rand(-0.03, 0.03), op: this._rand(0.25, 0.7), life: this._rand(80, 180), twinkle: this._rand(0.5, 1.2), phase: this._rand(0, Math.PI * 2), type: 'clear-night' };
       case 'sand': case 'dust':
         return { x: this._rand(-w, w), y: this._rand(0, h), r: this._rand(1, 3), v: this._rand(12, 25), vy: this._rand(-1, 1), op: this._rand(0.4, 0.9) };
       case 'ash':
@@ -240,7 +248,14 @@ class WeatherOverlay {
     }
   }
 
-  _tick() {
+  _tick(now) {
+    const t = now || performance.now();
+    const interval = 1000 / this.fps;
+    if (t - this.lastTick < interval) {
+      requestAnimationFrame((next) => this._tick(next));
+      return;
+    }
+    this.lastTick = t - (t - this.lastTick) % interval;
     this.t++;
     const { ctx, w, h } = this;
     ctx.clearRect(0, 0, w, h);
@@ -263,9 +278,11 @@ class WeatherOverlay {
     else if (this.effect === 'rockfall') this._drawRockfall(ctx, w, h);
     else if (this.effect === 'acid-rain') this._drawAcidRain(ctx, w, h);
     else if (this.effect === 'fire') this._drawFire(ctx, w, h);
+    else if (this.effect === 'clear-day') this._drawClearDay(ctx, w, h);
+    else if (this.effect === 'clear-night') this._drawClearNight(ctx, w, h);
     else if (this.particles.length) this._drawParticles(ctx, w, h);
 
-    requestAnimationFrame(() => this._tick());
+    requestAnimationFrame((next) => this._tick(next));
   }
 
   _drawTornado(ctx, w, h) {
@@ -728,6 +745,53 @@ class WeatherOverlay {
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
+
+  _drawClearDay(ctx, w, h) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const p of this.particles) {
+      p.x += p.v; p.y += p.vy; p.life--;
+      if (p.x > w + 20 || p.y < -20 || p.life <= 0) {
+        p.x = this._rand(-20, w); p.y = this._rand(h * 0.2, h);
+        p.v = this._rand(0.3, 0.8); p.vy = this._rand(-0.12, 0.12);
+        p.life = this._rand(180, 360);
+      }
+      const tw = 0.7 + 0.3 * Math.sin(this.t * 0.05 + p.x * 0.01);
+      ctx.fillStyle = `rgba(255,250,230,${p.op * tw})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  _drawClearNight(ctx, w, h) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    for (const p of this.particles) {
+      p.x += p.v; p.y += p.vy; p.life--;
+      const tw = 0.5 + 0.5 * Math.sin(this.t * p.twinkle + p.phase);
+      if (p.life <= 0 || p.y < -10 || p.x > w + 10) {
+        p.x = this._rand(0, w); p.y = this._rand(h * 0.1, h * 0.7);
+        p.v = this._rand(0.05, 0.15); p.vy = this._rand(-0.05, 0.05);
+        p.life = this._rand(150, 320); p.twinkle = this._rand(0.08, 0.18);
+        p.phase = this._rand(0, Math.PI * 2);
+      }
+      ctx.fillStyle = `rgba(255,245,220,${p.op * tw})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+    // Occasional shooting star for clear nights
+    if (Math.random() < 0.012) {
+      const x = this._rand(w * 0.1, w * 0.9);
+      const y = this._rand(0, h * 0.4);
+      const len = this._rand(20, 60);
+      const ang = this._rand(Math.PI * 0.25, Math.PI * 0.55);
+      ctx.strokeStyle = 'rgba(255,245,220,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.lineTo(x - Math.cos(ang) * len, y + Math.sin(ang) * len);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -752,10 +816,15 @@ export class WeatherAtmosphere {
     }
 
     try {
+      // Keep the WebGL load modest on the DAKboard CPU v5: half-res render and
+      // a 25 fps cap. The shader still looks cinematic and the GPU stays stable.
       this.sky = new Atmosphere(canvas, {
         time: this._now(),
         location: this.location,
         weather: WMO_ATMOSPHERE_TABLE[0],
+        resolutionScale: 0.5,
+        fps: 25,
+        celestial: { bortle: 6, milkyWay: 0, meteors: 0 },
       });
     } catch (err) {
       console.error('Atmosphere initialization failed', err);
