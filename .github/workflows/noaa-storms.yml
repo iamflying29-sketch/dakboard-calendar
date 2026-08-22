@@ -2,8 +2,9 @@ name: Update NOAA/NHC active storms
 
 on:
   schedule:
-    # Every 15 minutes. NHC updates CurrentStorms.json quickly as storms evolve.
-    - cron: '*/15 * * * *'
+    # Once an hour is plenty for hurricane/tropical-storm tracking. NHC updates
+    # are not minutely, and this stays far away from GitHub Actions rate limits.
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
