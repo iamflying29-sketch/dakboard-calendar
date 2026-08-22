@@ -176,6 +176,8 @@ let lastDaily = null;
 // standard WMO weather codes do not cover (tornado, tsunami, wildfire, etc.).
 const NWS_ALERTS_URL = `https://api.weather.gov/alerts/active?status=actual&point=${LAT},${LON}`;
 const USGS_QUAKE_URL = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${LAT}&longitude=${LON}&maxradiuskm=200&minmagnitude=4.0&starttime=`;
+const NOAA_STORMS_URL = './noaa_current_storms.json';
+const NOAA_STORM_RADIUS_KM = 2500; // catch Eastern/Central Pacific storms that could affect CA
 
 const NWS_EVENT_MAP = [
   { re: /tornado/i, key: 'tornado', label: 'Tornado Warning', severity: 5 },
@@ -228,7 +230,28 @@ async function fetchEarthquake() {
   }
 }
 
-function chooseAlertCondition(alerts, quake) {
+function havKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+
+async function fetchNoaaStorms() {
+  try {
+    const r = await fetch(`${NOAA_STORMS_URL}?v=1`);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) {
+    console.warn('NOAA/NHC storm fetch failed', e);
+    return null;
+  }
+}
+
+function chooseAlertCondition(alerts, quake, noaaStorms) {
   let best = null;
   for (const f of alerts) {
     const event = f.properties.event || '';
@@ -243,6 +266,27 @@ function chooseAlertCondition(alerts, quake) {
     }
   }
   if (best) return { key: best.key, label: best.label, source: 'NWS' };
+
+  // NOAA/NHC active tropical systems (Atlantic / Eastern Pacific / Central Pacific).
+  // Only considered relevant if they are within a reasonable distance of Tiburon.
+  if (noaaStorms && Array.isArray(noaaStorms.activeStorms)) {
+    for (const s of noaaStorms.activeStorms) {
+      if (s.latitude == null || s.longitude == null) continue;
+      const dist = havKm(LAT, LON, s.latitude, s.longitude);
+      if (dist > NOAA_STORM_RADIUS_KM) continue;
+      const cls = (s.classification || '').toUpperCase();
+      let key = 'tropical-storm', label = 'Tropical Storm', severity = 3;
+      if (cls === 'HU') { key = 'hurricane'; label = 'Hurricane'; severity = 4.5; }
+      else if (cls === 'TS') { key = 'tropical-storm'; label = 'Tropical Storm'; severity = 4; }
+      else if (cls === 'TD') { key = 'tropical-storm'; label = 'Tropical Depression'; severity = 2.5; }
+      const score = severity * 10 + Math.max(0, 5 - Math.round(dist / 500));
+      if (!best || score > best.score) {
+        best = { key, label: `${label} ${s.name || s.id || ''}`.trim(), score };
+      }
+    }
+  }
+  if (best) return { key: best.key, label: best.label, source: 'NOAA' };
+
   if (quake) {
     return {
       key: 'earthquake',
@@ -254,7 +298,7 @@ function chooseAlertCondition(alerts, quake) {
 }
 
 function render(data, fx) {
-  const { weather, aq, alerts, quake } = data;
+  const { weather, aq, alerts, quake, noaaStorms } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const daily = weather.daily;
@@ -273,8 +317,8 @@ function render(data, fx) {
     info = { key: displayKey, label: labelForKey(displayKey) };
   }
 
-  // Override with live NWS / USGS alerts if something rare/extreme is happening.
-  const alertInfo = !FORCED_SCENE ? chooseAlertCondition(alerts || [], quake) : null;
+  // Override with live NWS / USGS / NOAA alerts if something rare/extreme is happening.
+  const alertInfo = !FORCED_SCENE ? chooseAlertCondition(alerts || [], quake, noaaStorms) : null;
   if (alertInfo) {
     info = { key: alertInfo.key, label: alertInfo.label };
     displayKey = info.key;
@@ -289,7 +333,7 @@ function render(data, fx) {
 
   document.getElementById('nowIcon').innerHTML = iconSvgFor(displayKey, vars);
   document.getElementById('nowTemp').textContent = fToLabel(cur.temperature_2m);
-  document.getElementById('nowCond').textContent = FORCED_SCENE ? `${info.label} (${displayKey})` : info.label;
+  document.getElementById('nowCond').textContent = info.label;
   document.getElementById('nowSub').textContent = `Feels like ${fToLabel(cur.apparent_temperature)}`;
   document.getElementById('hilo').textContent =
     `H:${Math.round(daily.temperature_2m_max[TODAY_IDX])}°  L:${Math.round(daily.temperature_2m_min[TODAY_IDX])}°`;
@@ -403,12 +447,13 @@ window.fxEngine = null; // exposed for debugging/testing
 
 async function refresh() {
   try {
-    const [weatherData, alerts, quake] = await Promise.all([
+    const [weatherData, alerts, quake, noaaStorms] = await Promise.all([
       fetchWeather(),
       fetchNwsAlerts(),
       fetchEarthquake(),
+      fetchNoaaStorms(),
     ]);
-    render({ ...weatherData, alerts, quake }, fxEngine);
+    render({ ...weatherData, alerts, quake, noaaStorms }, fxEngine);
   } catch (e) {
     console.error('Weather fetch failed', e);
   }
