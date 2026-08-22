@@ -87,6 +87,8 @@ const KEY_TABLE = {
   'mostly-clear-night': { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.10, windSpeed: 2 },
   'partly-cloudy-day':  WMO_ATMOSPHERE_TABLE[2],
   'partly-cloudy-night':WMO_ATMOSPHERE_TABLE[2],
+  'mostly-cloudy-day':  { ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },
+  'mostly-cloudy-night':{ ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },
   'overcast':           WMO_ATMOSPHERE_TABLE[3],
   'fog':                WMO_ATMOSPHERE_TABLE[45],
   'drizzle':            WMO_ATMOSPHERE_TABLE[53],
@@ -131,6 +133,7 @@ const EXTREME_TABLE = {
   'haze':           { cloudCover: 0.35, precipitation: 0,   windSpeed: 3,  visibility: 5,   thunder: 0, convection: 0, overlay: 'haze', label: 'Haze' },
   'smog':           { cloudCover: 0.55, precipitation: 0,   windSpeed: 2,  visibility: 2,   thunder: 0, convection: 0, overlay: 'smoke', label: 'Smog' },
   'acid-rain':      { cloudCover: 0.80, precipitation: 12,  windSpeed: 6,  visibility: 5,   thunder: 0.2, convection: 0, precipitationType: 'rain', overlay: 'acid-rain', label: 'Acid Rain' },
+  'flash-flood':    { cloudCover: 0.85, precipitation: 50,  windSpeed: 10, visibility: 2,   thunder: 0.4, convection: 0.5, precipitationType: 'rain', overlay: 'rain', label: 'Flash Flood' },
 
   // Astronomical / rare sky events
   'aurora':         { cloudCover: 0.20, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'aurora', label: 'Aurora' },

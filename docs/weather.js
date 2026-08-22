@@ -155,7 +155,7 @@ async function fetchWeather() {
   // like Tiburon, avoiding spurious over-water forecast values.
   const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
   const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m` +
     `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
@@ -172,8 +172,89 @@ async function fetchWeather() {
 
 let lastDaily = null;
 
+// Free alert / observation feeds for rare/extreme events that Open-Meteo's
+// standard WMO weather codes do not cover (tornado, tsunami, wildfire, etc.).
+const NWS_ALERTS_URL = `https://api.weather.gov/alerts/active?status=actual&point=${LAT},${LON}`;
+const USGS_QUAKE_URL = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${LAT}&longitude=${LON}&maxradiuskm=200&minmagnitude=4.0&starttime=`;
+
+const NWS_EVENT_MAP = [
+  { re: /tornado/i, key: 'tornado', label: 'Tornado Warning', severity: 5 },
+  { re: /tsunami/i, key: 'tsunami', label: 'Tsunami Warning', severity: 5 },
+  { re: /hurricane/i, key: 'hurricane', label: 'Hurricane Warning', severity: 4 },
+  { re: /tropical storm/i, key: 'tropical-storm', label: 'Tropical Storm Warning', severity: 4 },
+  { re: /flash flood/i, key: 'flash-flood', label: 'Flash Flood Warning', severity: 4 },
+  { re: /severe thunderstorm/i, key: 'thunderstorm-hail', label: 'Severe Thunderstorm Warning', severity: 3 },
+  { re: /tornado watch|severe thunderstorm watch/i, key: 'thunderstorm', label: 'Severe Weather Watch', severity: 2 },
+  { re: /fire weather|red flag/i, key: 'wildfire-smoke', label: 'Fire Weather Warning', severity: 3 },
+  { re: /dust storm/i, key: 'dust-storm', label: 'Dust Storm Warning', severity: 3 },
+  { re: /blizzard|winter storm/i, key: 'blizzard', label: 'Winter Storm Warning', severity: 3 },
+  { re: /ice storm/i, key: 'ice-storm', label: 'Ice Storm Warning', severity: 3 },
+  { re: /volcanic/i, key: 'volcanic-eruption', label: 'Volcanic Warning', severity: 4 },
+];
+
+function nwsSeverityValue(sev) {
+  const map = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0 };
+  return map[sev] || 0;
+}
+
+async function fetchNwsAlerts() {
+  try {
+    const r = await fetch(NWS_ALERTS_URL);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return Array.isArray(data.features) ? data.features : [];
+  } catch (e) {
+    console.warn('NWS alerts fetch failed', e);
+    return [];
+  }
+}
+
+async function fetchEarthquake() {
+  try {
+    const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    const r = await fetch(USGS_QUAKE_URL + encodeURIComponent(yesterday));
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (!data.features || !data.features.length) return null;
+    const q = data.features[0];
+    return {
+      magnitude: q.properties.mag,
+      place: q.properties.place,
+      time: q.properties.time,
+    };
+  } catch (e) {
+    console.warn('USGS earthquake fetch failed', e);
+    return null;
+  }
+}
+
+function chooseAlertCondition(alerts, quake) {
+  let best = null;
+  for (const f of alerts) {
+    const event = f.properties.event || '';
+    const severity = nwsSeverityValue(f.properties.severity);
+    for (const m of NWS_EVENT_MAP) {
+      if (m.re.test(event)) {
+        const score = m.severity * 10 + severity;
+        if (!best || score > best.score) {
+          best = { ...m, score };
+        }
+      }
+    }
+  }
+  if (best) return { key: best.key, label: best.label, source: 'NWS' };
+  if (quake) {
+    return {
+      key: 'earthquake',
+      label: `Earthquake M${quake.magnitude}`,
+      source: 'USGS',
+    };
+  }
+  return null;
+}
+
 function render(data, fx) {
-  const { weather, aq } = data;
+  const { weather, aq, alerts, quake } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const daily = weather.daily;
@@ -183,8 +264,21 @@ function render(data, fx) {
   if (fx) fx.setSunState(sunState.frac, sunState.elevation);
 
   const isDay = !!cur.is_day;
-  const info = wmoInfo(cur.weather_code, isDay);
-  const displayKey = FORCED_SCENE || info.key;
+  let info = wmoInfo(cur.weather_code, isDay, cur.cloud_cover);
+  let displayKey = FORCED_SCENE || info.key;
+
+  // Forced scene (e.g. ?scene=flash-flood) should display that scene's label,
+  // not the current real-world weather label.
+  if (FORCED_SCENE) {
+    info = { key: displayKey, label: labelForKey(displayKey) };
+  }
+
+  // Override with live NWS / USGS alerts if something rare/extreme is happening.
+  const alertInfo = !FORCED_SCENE ? chooseAlertCondition(alerts || [], quake) : null;
+  if (alertInfo) {
+    info = { key: alertInfo.key, label: alertInfo.label };
+    displayKey = info.key;
+  }
   const vars = {
     theme: THEME,
     '--sun-core': cssVar('--sun-core'), '--moon-core': cssVar('--moon-core'),
@@ -201,6 +295,11 @@ function render(data, fx) {
     `H:${Math.round(daily.temperature_2m_max[TODAY_IDX])}°  L:${Math.round(daily.temperature_2m_min[TODAY_IDX])}°`;
 
   if (fx) fx.setCondition(displayKey);
+  // Drive the atmospheric cloud density from the measured cloud-cover percent
+  // so the CGI matches the actual live condition, not just the WMO category.
+  if (fx && cur.cloud_cover != null) {
+    fx.setWeatherData({ cloudCover: cur.cloud_cover / 100 });
+  }
 
   // Hourly strip: current hour + next 11
   const nowHour = weather.current.time.slice(0, 13) + ':00';
@@ -304,8 +403,12 @@ window.fxEngine = null; // exposed for debugging/testing
 
 async function refresh() {
   try {
-    const data = await fetchWeather();
-    render(data, fxEngine);
+    const [weatherData, alerts, quake] = await Promise.all([
+      fetchWeather(),
+      fetchNwsAlerts(),
+      fetchEarthquake(),
+    ]);
+    render({ ...weatherData, alerts, quake }, fxEngine);
   } catch (e) {
     console.error('Weather fetch failed', e);
   }
@@ -336,4 +439,8 @@ function boot() {
   }, 60 * 1000);
 }
 
-document.addEventListener('DOMContentLoaded', boot);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}

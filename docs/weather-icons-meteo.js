@@ -12,6 +12,8 @@ const KEY_TO_ICON = {
   'mostly-clear-night': 'partly-cloudy-night',
   'partly-cloudy-day':  'partly-cloudy-day',
   'partly-cloudy-night':'partly-cloudy-night',
+  'mostly-cloudy-day':  'cloudy',
+  'mostly-cloudy-night':'cloudy',
   'overcast':           'overcast',
   'fog':                'fog',
   'drizzle':            'drizzle',
@@ -107,6 +109,11 @@ const EXTREME_ICONS = {
     <path d="M25 50c-8 0-14-6-14-14s6-14 14-14c3 0 6 1 8 3 4-10 14-17 25-17 14 0 26 10 28 24 6-1 12 4 12 11 0 7-5 12-12 12H25z" fill="#e2e8f0"/>
     <g fill="#a3e635"><ellipse cx="35" cy="70" rx="3" ry="6"/><ellipse cx="52" cy="78" rx="3" ry="6"/><ellipse cx="70" cy="70" rx="3" ry="6"/></g>
   `),
+  'flash-flood': extremeSvg(`
+    <path d="M20 55c-5 0-10-5-10-10s5-10 10-10c3 0 5 1 7 3 4-8 13-14 23-14 12 0 22 8 24 19 5-1 10 3 10 9 0 6-5 10-10 10H20z" fill="#64748b"/>
+    <path d="M15 70 Q35 60 50 70 T85 70" stroke="#3b82f6" stroke-width="5" fill="none"/>
+    <path d="M20 82 Q40 72 55 82 T90 82" stroke="#1d4ed8" stroke-width="4" fill="none"/>
+  `),
   'aurora': extremeSvg(`
     <rect width="100" height="100" fill="#0f172a"/>
     <g opacity="0.8"><path d="M0 30 Q50 60 100 30" stroke="#4ade80" stroke-width="8" fill="none"/><path d="M0 45 Q50 75 100 45" stroke="#22d3ee" stroke-width="6" fill="none"/><path d="M0 60 Q50 85 100 60" stroke="#a78bfa" stroke-width="5" fill="none"/></g>
@@ -198,7 +205,7 @@ const WI = {
   thermo(color) { return meteoIcon('clear-day'); },
 };
 
-function wmoInfo(code, isDay) {
+function wmoInfo(code, isDay, cloudCover) {
   const day = !!isDay;
   const table = {
     0:  { key: day ? "clear-day" : "clear-night", label: "Clear" },
@@ -230,7 +237,21 @@ function wmoInfo(code, isDay) {
     96: { key: "thunderstorm-hail", label: "Thunderstorm w/ Hail" },
     99: { key: "thunderstorm-hail", label: "Severe Thunderstorm" },
   };
-  return table[code] || { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Unknown" };
+  let info = table[code] || { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Unknown" };
+
+  // Open-Meteo's WMO code is categorical and can disagree with the actual
+  // cloud-cover percentage (e.g. code 3 "overcast" when only 55% cloudy).
+  // For clear/cloud codes, pick the display label/icon directly from the
+  // measured cloud cover for a more accurate live condition.
+  if (cloudCover != null && [0, 1, 2, 3, 45, 48].includes(code)) {
+    const cc = Number(cloudCover);
+    if (cc <= 15)      info = { key: day ? "clear-day" : "clear-night", label: "Clear" };
+    else if (cc <= 40) info = { key: day ? "mostly-clear-day" : "mostly-clear-night", label: "Mostly Clear" };
+    else if (cc <= 70) info = { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Partly Cloudy" };
+    else if (cc <= 95) info = { key: day ? "mostly-cloudy-day" : "mostly-cloudy-night", label: "Mostly Cloudy" };
+    else               info = { key: "overcast", label: "Overcast" };
+  }
+  return info;
 }
 
 function iconSvgFor(key, vars) {
@@ -239,6 +260,34 @@ function iconSvgFor(key, vars) {
   return meteoIcon(name);
 }
 
+// Friendly display labels for all weather keys, including rare/extreme scenes.
+const LABELS = {
+  'clear-day': 'Clear', 'clear-night': 'Clear',
+  'mostly-clear-day': 'Mostly Clear', 'mostly-clear-night': 'Mostly Clear',
+  'partly-cloudy-day': 'Partly Cloudy', 'partly-cloudy-night': 'Partly Cloudy',
+  'mostly-cloudy-day': 'Mostly Cloudy', 'mostly-cloudy-night': 'Mostly Cloudy',
+  'overcast': 'Overcast', 'fog': 'Fog', 'drizzle': 'Drizzle',
+  'rain': 'Rain', 'rain-heavy': 'Heavy Rain', 'freezing-rain': 'Freezing Rain',
+  'snow': 'Snow', 'snow-heavy': 'Heavy Snow', 'snow-grains': 'Snow Grains',
+  'rain-showers': 'Rain Showers', 'snow-showers': 'Snow Showers',
+  'thunderstorm': 'Thunderstorm', 'thunderstorm-hail': 'Severe Thunderstorm',
+  'tornado': 'Tornado', 'waterspout': 'Waterspout', 'hurricane': 'Hurricane',
+  'tropical-storm': 'Tropical Storm', 'derecho': 'Derecho', 'squall': 'Squall',
+  'blizzard': 'Blizzard', 'ice-storm': 'Ice Storm', 'sandstorm': 'Sandstorm',
+  'dust-storm': 'Dust Storm', 'volcanic-ash': 'Volcanic Ash', 'wildfire-smoke': 'Wildfire Smoke',
+  'forest-fire': 'Forest Fire', 'smoke': 'Smoke', 'ash': 'Ash', 'haze': 'Haze', 'smog': 'Smog',
+  'acid-rain': 'Acid Rain', 'aurora': 'Aurora', 'eclipse': 'Solar Eclipse', 'rainbow': 'Rainbow',
+  'meteor-shower': 'Meteor Shower', 'meteor-impact': 'Meteor Impact', 'asteroid-impact': 'Asteroid Impact',
+  'earthquake': 'Earthquake', 'tsunami': 'Tsunami', 'volcanic-eruption': 'Volcanic Eruption',
+  'landslide': 'Landslide', 'mudslide': 'Mudslide', 'avalanche': 'Avalanche', 'rockfall': 'Rockfall',
+  'geological-event': 'Geological Event', 'apocalypse': 'Apocalypse', 'flash-flood': 'Flash Flood',
+};
+
+function labelForKey(key) {
+  return LABELS[key] || key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 window.WI = WI;
 window.wmoInfo = wmoInfo;
 window.iconSvgFor = iconSvgFor;
+window.labelForKey = labelForKey;
