@@ -8,11 +8,12 @@ import { WeatherAtmosphere } from './weather-atmosphere.js';
 const LAT = 37.8991768;
 const LON = -122.4949685;
 const TZ = "America/Los_Angeles";
-// Poll every 60 seconds for the latest Open-Meteo 15-minute current conditions.
+// Poll every 15 minutes, matching Open-Meteo/NWS's own update cadence.
 // Open-Meteo is the free, no-account provider that TRMNL also uses; the data
-// itself updates roughly every 15 minutes, so the display always shows the
-// freshest available value without needing an API key.
-const REFRESH_MS = 60 * 1000; // poll every 1 minute
+// itself updates roughly every 15 minutes, so polling more often than that
+// just burns free-tier request quota (Deno Deploy storm proxy, NWS, USGS)
+// without ever seeing newer data.
+const REFRESH_MS = 15 * 60 * 1000; // poll every 15 minutes
 const LOCATION_LABEL = "Tiburon, CA";
 
 const THEME = document.documentElement.getAttribute('data-theme') || 'day';
