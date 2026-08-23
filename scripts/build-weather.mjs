@@ -10,13 +10,18 @@
 // (this exact failure mode is what caused the device to get stuck).
 //
 // This script:
-//   1. Downlevels docs/weather-icons-meteo.js in place to ES5 (it's already
-//      a plain classic <script>, so it stays a plain classic <script> --
-//      just syntax-safe now).
-//   2. Bundles docs/atmosphere.js + docs/weather-atmosphere.js +
-//      docs/weather.js (which import each other via ES module syntax) into
-//      a single non-module, ES5, IIFE file: docs/weather.bundle.js. This
+//   1. Downlevels weather-widget/weather-icons-meteo.js in place to ES2015
+//      (it's already a plain classic <script>, so it stays a plain classic
+//      <script> -- just syntax-safe now).
+//   2. Bundles weather-widget/atmosphere.js + weather-atmosphere.js +
+//      weather.js (which import each other via ES module syntax) into a
+//      single non-module, ES2015, IIFE file: weather.bundle.js. This
 //      removes the runtime dependency on native ES module support entirely.
+//
+// NOTE: weather-widget/ is intentionally NOT inside docs/ (the GitHub Pages
+// publish dir) -- the whole weather widget is served from Deno Deploy now,
+// not GitHub Pages, via weather-widget-server.deno.js /
+// scripts/deploy-weather-widget.mjs. See AGENTS.md for the full history.
 //
 // Run via `npm run build:weather` after editing any of the source files.
 // This also runs automatically in CI (.github/workflows/build.yml) before
@@ -27,7 +32,10 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DOCS = path.join(__dirname, "..", "docs");
+// The weather widget lives entirely outside docs/ (which is the GitHub
+// Pages publish dir) so it is never served via GitHub Pages/its CDN --
+// see weather-widget/weather-widget-server.deno.js for why.
+const SRC = path.join(__dirname, "..", "weather-widget");
 
 // esbuild refuses to downlevel `let`/`const` block-scoping all the way to
 // ES5 (it won't silently risk changing semantics), so ES2015 is the
@@ -43,11 +51,11 @@ async function main() {
   //    `function wmoInfo() {}` etc. remain true globals on `window` exactly
   //    as they are today.
   await esbuild.build({
-    entryPoints: [path.join(DOCS, "weather-icons-meteo.js")],
-    outfile: path.join(DOCS, "weather-icons-meteo.js"),
+    entryPoints: [path.join(SRC, "weather-icons-meteo.js")],
+    outfile: path.join(SRC, "weather-icons-meteo.js"),
     allowOverwrite: true,
     bundle: false,
-    minify: false,
+    minify: true,
     target: TARGET,
     logLevel: "info",
   });
@@ -59,11 +67,14 @@ async function main() {
   //    left unresolved by esbuild (they aren't imported) and continue to
   //    resolve at runtime against the real `window` globals, same as today.
   await esbuild.build({
-    entryPoints: [path.join(DOCS, "weather.js")],
-    outfile: path.join(DOCS, "weather.bundle.js"),
+    entryPoints: [path.join(SRC, "weather.js")],
+    outfile: path.join(SRC, "weather.bundle.js"),
     bundle: true,
     format: "iife",
-    minify: false,
+    // Minified: this ships to a real device over a real network on every
+    // page load, and the free-tier egress budget is shared org-wide with
+    // two other Deno apps, so shrinking this ~3x is a free, safe win.
+    minify: true,
     target: TARGET,
     logLevel: "info",
   });
