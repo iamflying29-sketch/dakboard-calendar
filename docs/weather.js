@@ -160,20 +160,6 @@ function dayLabel(dateStr, idx) {
   return d.toLocaleDateString('en-US', { weekday: 'short' });
 }
 
-// Open-Meteo's default "best_match" model (GFS/HRRR-based for CONUS) has been
-// observed forecasting a flat 100% cloud_cover / "Overcast" for every single
-// hour of the day for this exact coastal Tiburon point, even overriding real
-// ground-truth clear skies (see METAR check above). That systematic bias
-// makes the hourly/daily CONDITION (icon + label) wrong far more often than
-// it should be. NOAA's National Blend of Models (NBM) is the official,
-// bias-corrected, observation-calibrated consensus forecast for the US and
-// does not show this flat-100% artifact for this location.
-//
-// IMPORTANT: we only use NBM for the weather_code / cloud_cover (i.e. the
-// CONDITION), never for temperature/humidity/wind/UV -- those already track
-// the specific microclimate well and must not change.
-const CONDITION_MODEL = 'ncep_nbm_conus';
-
 async function fetchWeather() {
   // cell_selection=land prefers the nearest land model cell for coastal places
   // like Tiburon, avoiding spurious over-water forecast values.
@@ -185,54 +171,15 @@ async function fetchWeather() {
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
     `&timezone=${encodeURIComponent(TZ)}&forecast_days=7&past_days=1`;
-  const condUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
-    `&models=${CONDITION_MODEL}` +
-    `&hourly=weather_code,cloud_cover` +
-    `&daily=weather_code` +
-    `&timezone=${encodeURIComponent(TZ)}&forecast_days=7&past_days=1`;
   const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}` +
     `&current=us_aqi&timezone=${encodeURIComponent(TZ)}`;
 
-  const [wRes, aqRes, condRes] = await Promise.all([
+  const [wRes, aqRes, skyCoverIntervals] = await Promise.all([
     fetch(wUrl).then(r => r.json()),
     fetch(aqUrl).then(r => r.json()).catch(() => null),
-    fetch(condUrl).then(r => r.json()).catch(() => null),
+    fetchNwsSkyCover(),
   ]);
-  return { weather: wRes, aq: aqRes, cond: condRes };
-}
-
-// Build a lookup from ISO timestamp -> { weather_code, cloud_cover } for the
-// condition-only model response, so hourly/daily rendering can look up the
-// more reliable condition for a given time without needing matching array
-// indices (NBM occasionally has minor gaps vs. the main model's timeline).
-function buildConditionLookup(cond) {
-  const hourly = new Map();
-  const daily = new Map();
-  if (cond && cond.hourly && cond.hourly.time) {
-    for (let i = 0; i < cond.hourly.time.length; i++) {
-      hourly.set(cond.hourly.time[i], {
-        weather_code: cond.hourly.weather_code[i],
-        cloud_cover: cond.hourly.cloud_cover[i],
-      });
-    }
-  }
-  if (cond && cond.daily && cond.daily.time) {
-    for (let i = 0; i < cond.daily.time.length; i++) {
-      daily.set(cond.daily.time[i], cond.daily.weather_code[i]);
-    }
-  }
-  return { hourly, daily };
-}
-
-// Look up the more reliable condition-model (NBM) weather_code/cloud_cover
-// for a given hourly/15-min timestamp, floored to the hour (NBM is
-// hourly-resolution only). Falls back to the main model's own values if NBM
-// has no data for that hour.
-function conditionForHour(condLookup, timeStr, fallbackCode, fallbackCC) {
-  const hourKey = timeStr.slice(0, 13) + ':00';
-  const c = condLookup.hourly.get(hourKey);
-  if (c) return { code: c.weather_code, cc: c.cloud_cover };
-  return { code: fallbackCode, cc: fallbackCC };
+  return { weather: wRes, aq: aqRes, skyCoverIntervals };
 }
 
 let lastDaily = null;
@@ -243,41 +190,84 @@ const NWS_ALERTS_URL = `https://api.weather.gov/alerts/active?status=actual&poin
 const USGS_QUAKE_URL = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${LAT}&longitude=${LON}&maxradiuskm=200&minmagnitude=4.0&starttime=`;
 const NOAA_STORMS_URL = 'https://noaa-storm-proxy.iamflying29-sketch.deno.net';
 
-// Open-Meteo's "current" weather_code/cloud_cover come from a model
-// nowcast, which can lag or disagree with what the sky is actually doing
-// right now (e.g. reporting 100% overcast on a clear night). Real METAR
-// station observations are ground-truth for "is it clear or cloudy right
-// now", so we prefer them for the CURRENT condition only, in this priority
-// order of nearby full-METAR-reporting stations. Forecasts (hourly/daily)
-// still use Open-Meteo's model data as before -- there's no equivalent
-// "real observation" for the future.
-const METAR_STATIONS = ['KSFO', 'KOAK', 'KHWD'];
-const METAR_MAX_AGE_MS = 90 * 60 * 1000; // ignore stale observations (>90 min old)
-// NWS METAR cloud amount codes -> approximate cloud-cover percentage.
-const METAR_CLOUD_PCT = { SKC: 0, CLR: 0, NSC: 0, NCD: 0, FEW: 15, SCT: 40, BKN: 75, OVC: 100, VV: 100 };
+// ---------------------------------------------------------------------------
+// Weather CONDITION (sky cover / clear vs cloudy) source: NWS gridpoint
+// forecast -- NOT Open-Meteo, NOT a distant airport METAR station.
+//
+// Open-Meteo's default model was observed forecasting a flat 100% cloud
+// cover for literally every hour of the day at this location regardless of
+// reality. Nearby full-METAR stations (KSFO/KOAK/KHWD) are 17-26 miles away
+// and are still just "the surrounding area", not this address.
+//
+// The National Weather Service publishes an official, human-forecaster
+// quality-controlled gridded forecast at ~2.5km resolution. The grid cell
+// below (office MTR, gridpoint 83,111) was resolved specifically for
+// 7 Upper Cecilia Way, Tiburon, CA 94920 (37.8991768, -122.4949685) via:
+//   https://api.weather.gov/points/37.8991768,-122.4949685
+// Its "skyCover" field gives the actual forecast cloud-cover percentage for
+// THIS grid cell, hour by hour, for the current time through ~7 days out --
+// this is what drives the CURRENT + HOURLY + DAILY condition/icon below.
+// Temperature/humidity/wind/UV intentionally still come from Open-Meteo
+// (see fetchWeather), since that already matches this specific residence's
+// microclimate better than generic station-based data.
+const NWS_GRIDPOINT_URL = 'https://api.weather.gov/gridpoints/MTR/83,111';
 
-async function fetchMetarCloudCover() {
-  for (const station of METAR_STATIONS) {
-    try {
-      const r = await fetch(`https://api.weather.gov/stations/${station}/observations/latest`);
-      if (!r.ok) continue;
-      const data = await r.json();
-      const props = data.properties;
-      if (!props || !props.timestamp) continue;
-      const age = Date.now() - new Date(props.timestamp).getTime();
-      if (age > METAR_MAX_AGE_MS) continue;
-      const layers = Array.isArray(props.cloudLayers) ? props.cloudLayers : [];
-      let pct = 0;
-      for (const layer of layers) {
-        const amt = METAR_CLOUD_PCT[layer.amount];
-        if (amt != null && amt > pct) pct = amt;
-      }
-      return { cloudCoverPct: pct, station, textDescription: props.textDescription || '' };
-    } catch (e) {
-      console.warn(`METAR fetch failed for ${station}`, e);
-    }
+// Parse an ISO8601 duration like "P1DT6H" or "PT1H" into milliseconds.
+function parseIsoDurationMs(iso) {
+  const m = /^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?/.exec(iso || '');
+  if (!m) return 0;
+  const days = parseInt(m[1] || '0', 10);
+  const hours = parseInt(m[2] || '0', 10);
+  const mins = parseInt(m[3] || '0', 10);
+  return ((days * 24 + hours) * 60 + mins) * 60 * 1000;
+}
+
+// NWS gridpoint "values" arrays use the format
+// "2026-08-23T14:00:00+00:00/PT1H" (start time / ISO8601 duration). Convert
+// to a flat list of { start, end, value } intervals for easy lookup.
+function parseNwsIntervals(field) {
+  if (!field || !Array.isArray(field.values)) return [];
+  return field.values.map(v => {
+    const [startStr, durStr] = v.validTime.split('/');
+    const start = new Date(startStr);
+    const end = new Date(start.getTime() + parseIsoDurationMs(durStr));
+    return { start, end, value: v.value };
+  });
+}
+
+async function fetchNwsSkyCover() {
+  try {
+    const r = await fetch(NWS_GRIDPOINT_URL);
+    if (!r.ok) return null;
+    const data = await r.json();
+    return parseNwsIntervals(data.properties && data.properties.skyCover);
+  } catch (e) {
+    console.warn('NWS gridpoint skyCover fetch failed', e);
+    return null;
+  }
+}
+
+// Look up the NWS-forecast sky-cover percentage covering a given Date.
+function skyCoverAt(intervals, date) {
+  if (!intervals || !intervals.length) return null;
+  for (const iv of intervals) {
+    if (date >= iv.start && date < iv.end) return iv.value;
   }
   return null;
+}
+
+// Average sky cover across daylight hours (9am-6pm local) for a given
+// "YYYY-MM-DD" date, for a single representative daily condition/icon.
+function avgDaytimeSkyCover(intervals, dateStr) {
+  if (!intervals || !intervals.length) return null;
+  const samples = [];
+  for (let h = 9; h <= 18; h++) {
+    const d = new Date(`${dateStr}T${String(h).padStart(2, '0')}:00:00`);
+    const v = skyCoverAt(intervals, d);
+    if (v != null) samples.push(v);
+  }
+  if (!samples.length) return null;
+  return samples.reduce((a, b) => a + b, 0) / samples.length;
 }
 
 const NWS_EVENT_MAP = [
@@ -392,25 +382,26 @@ function chooseAlertCondition(alerts, quake, noaaStorms) {
 }
 
 function render(data, fx) {
-  const { weather, aq, alerts, quake, noaaStorms, metar, cond } = data;
+  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const minutely15 = weather.minutely_15;
   const daily = weather.daily;
   lastDaily = daily;
-  const condLookup = buildConditionLookup(cond);
 
   const sunState = applySkyForNow(daily);
   if (fx) fx.setSunState(sunState.frac, sunState.elevation);
 
   const isDay = !!cur.is_day;
-  // Prefer a real, ground-truth METAR station observation over Open-Meteo's
+  // Prefer the NWS gridpoint forecast (specific to this exact address's grid
+  // cell, quality-controlled by local forecasters) over Open-Meteo's
   // model-nowcast cloud_cover for the CURRENT condition -- the model can lag
   // or simply disagree with what the sky is actually doing right now (e.g.
   // reporting 100% overcast on an actually-clear night). wmoInfo() only uses
   // this value for clear/cloud WMO codes (0-3), so it has no effect when
-  // Open-Meteo itself is already reporting active precipitation.
-  const liveCloudCover = metar ? metar.cloudCoverPct : cur.cloud_cover;
+  // Open-Meteo itself is already reporting active precipitation. Temperature
+  // stays on cur.temperature_2m (Open-Meteo) regardless.
+  const liveCloudCover = skyCoverAt(skyCoverIntervals, new Date()) ?? cur.cloud_cover;
   let info = wmoInfo(cur.weather_code, isDay, liveCloudCover);
   let displayKey = FORCED_SCENE || info.key;
 
@@ -462,12 +453,13 @@ function render(data, fx) {
     if (idx >= stripData.time.length) break;
     const hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
     const hCC = stripData.cloud_cover ? stripData.cloud_cover[idx] : null;
-    // Use the NBM condition model (bias-corrected against real observations)
-    // for the displayed icon/label instead of the main model's weather_code,
-    // which has been observed forecasting a flat 100% overcast for this
-    // location regardless of actual conditions.
-    const hCond = conditionForHour(condLookup, stripData.time[idx], stripData.weather_code[idx], hCC);
-    const hi = wmoInfo(hCond.code, hIsDay, hCond.cc);
+    // Use the NWS gridpoint forecast (specific to this address's exact grid
+    // cell) for the displayed cloud condition instead of Open-Meteo's own
+    // cloud_cover, which has been observed forecasting a flat 100% overcast
+    // for this location regardless of actual conditions. weather_code (for
+    // rain/snow/storm detection) still comes from Open-Meteo as before.
+    const nwsCC = skyCoverAt(skyCoverIntervals, new Date(stripData.time[idx]));
+    const hi = wmoInfo(stripData.weather_code[idx], hIsDay, nwsCC != null ? nwsCC : hCC);
     const pop = stripData.precipitation_probability ? stripData.precipitation_probability[idx] : null;
     const el = document.createElement('div');
     el.className = 'ww-hour';
@@ -488,12 +480,13 @@ function render(data, fx) {
   const span = Math.max(1, globalMax - globalMin);
   for (let i = 0; i < 5; i++) {
     const idx = TODAY_IDX + i;
-    // Same reasoning as the hourly strip: prefer the NBM condition model's
-    // daily weather_code over the main model's, which tends to report a
-    // worst-case/overcast aggregate for days that are actually
-    // clear-to-partly-cloudy for most of the daylight hours.
-    const nbmDailyCode = condLookup.daily.get(daily.time[idx]);
-    const di = wmoInfo(nbmDailyCode != null ? nbmDailyCode : daily.weather_code[idx], true);
+    // Same reasoning as the hourly strip: use the NWS gridpoint forecast's
+    // average daytime (9am-6pm) sky cover for this address's exact grid cell
+    // instead of Open-Meteo's own daily aggregate, which tends to report a
+    // worst-case/overcast day even when it's actually clear-to-partly-cloudy
+    // for most of the daylight hours (classic Bay Area marine-layer pattern).
+    const nwsDayCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[idx]);
+    const di = wmoInfo(daily.weather_code[idx], true, nwsDayCC);
     const lo = daily.temperature_2m_min[idx], hi = daily.temperature_2m_max[idx];
     const left = ((lo - globalMin) / span) * 100;
     const width = ((hi - lo) / span) * 100;
@@ -564,14 +557,13 @@ window.fxEngine = null; // exposed for debugging/testing
 
 async function refresh() {
   try {
-    const [weatherData, alerts, quake, noaaStorms, metar] = await Promise.all([
+    const [weatherData, alerts, quake, noaaStorms] = await Promise.all([
       fetchWeather(),
       fetchNwsAlerts(),
       fetchEarthquake(),
       fetchNoaaStorms(),
-      fetchMetarCloudCover(),
     ]);
-    render({ ...weatherData, alerts, quake, noaaStorms, metar }, fxEngine);
+    render({ ...weatherData, alerts, quake, noaaStorms }, fxEngine);
   } catch (e) {
     console.error('Weather fetch failed', e);
   }

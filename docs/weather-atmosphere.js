@@ -83,8 +83,12 @@ const WMO_ATMOSPHERE_TABLE = {
 const KEY_TABLE = {
   'clear-day':          { ...WMO_ATMOSPHERE_TABLE[0], overlay: 'clear-day', cloudCover: 0.03, windSpeed: 3 },
   'clear-night':        { ...WMO_ATMOSPHERE_TABLE[0], overlay: 'clear-night', cloudCover: 0.0, windSpeed: 2 },
-  'mostly-clear-day':   { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.15, windSpeed: 3 },
-  'mostly-clear-night': { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.10, windSpeed: 2 },
+  // "Mostly clear" should still feel clear -- reuse the clear-day/night
+  // sparkle/star overlays (a sky that's 85-90% clear still shows plenty of
+  // stars at night / sun glints by day), just with a touch of cloud in the
+  // WebGL sky itself so it's not identical to fully clear.
+  'mostly-clear-day':   { ...WMO_ATMOSPHERE_TABLE[1], overlay: 'clear-day', cloudCover: 0.15, windSpeed: 3 },
+  'mostly-clear-night': { ...WMO_ATMOSPHERE_TABLE[1], overlay: 'clear-night', cloudCover: 0.10, windSpeed: 2 },
   'partly-cloudy-day':  WMO_ATMOSPHERE_TABLE[2],
   'partly-cloudy-night':WMO_ATMOSPHERE_TABLE[2],
   'mostly-cloudy-day':  { ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },

@@ -35,6 +35,40 @@ function extremeSvg(content) {
   return `<svg class="weather-icon" viewBox="0 0 100 100" style="filter:drop-shadow(0 3px 4px rgba(0,0,0,0.12))">${content}</svg>`;
 }
 
+// The bundled Meteocons set has no dedicated "mostly clear" icon, so
+// 'mostly-clear-day/night' previously reused the same icon as
+// 'partly-cloudy-day/night' -- a large cloud that mostly covers the sun/moon.
+// That looks like "mostly cloudy", the opposite of what it's supposed to
+// represent. These custom icons instead put a large, dominant sun/moon front
+// and center with only a small cloud wisp low in the corner, matching how
+// "mostly clear"/"mostly sunny" is depicted by every mainstream weather app.
+const MOSTLY_CLEAR_ICONS = {
+  'mostly-clear-day': `<svg class="weather-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <g id="Sun">
+      <circle cx="68" cy="52" r="23" fill="url(#mcd-sun)" stroke="#F8AF18"/>
+      <g stroke="#F8AF18" stroke-width="6" stroke-linecap="round">
+        <path d="M68 8V18"/><path d="M68 86V96"/>
+        <path d="M24 52H14"/><path d="M112 52H122"/>
+        <path d="M37.5 21.5L30.5 14.5"/><path d="M105.5 89.5L98.5 82.5"/>
+        <path d="M98.5 21.5L105.5 14.5"/><path d="M30.5 89.5L37.5 82.5"/>
+      </g>
+    </g>
+    <path d="M22 88c-4.5 0-8-3.6-8-8s3.5-8 8-8c1.4 0 2.7.4 3.9 1 2-4.3 6.3-7.3 11.4-7.3 6.4 0 11.7 4.6 12.6 10.7 3.2-.6 6.4 1.7 6.4 5.1 0 3.1-2.5 5.6-5.6 5.6H22z" fill="url(#mcd-cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
+    <defs>
+      <linearGradient id="mcd-sun" x1="68" y1="29" x2="68" y2="75" gradientUnits="userSpaceOnUse"><stop stop-color="#FBBF24"/><stop offset="1" stop-color="#F8AF18"/></linearGradient>
+      <linearGradient id="mcd-cloud" x1="35" y1="65" x2="35" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#F3F7FE"/><stop offset="1" stop-color="#E6EFFC"/></linearGradient>
+    </defs>
+  </svg>`,
+  'mostly-clear-night': `<svg class="weather-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M56 12c-16 3-28 17-28 34 0 19 15.5 34.5 34.5 34.5 13 0 24.3-7.2 30.1-17.9C71.7 66 55 49.2 55 28.6 55 22.7 56 17.1 56 12z" fill="url(#mcn-moon)" stroke="#72B9D5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M22 96c-4.5 0-8-3.6-8-8s3.5-8 8-8c1.4 0 2.7.4 3.9 1 2-4.3 6.3-7.3 11.4-7.3 6.4 0 11.7 4.6 12.6 10.7 3.2-.6 6.4 1.7 6.4 5.1 0 3.1-2.5 5.6-5.6 5.6H22z" fill="url(#mcn-cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
+    <defs>
+      <linearGradient id="mcn-moon" x1="58" y1="12" x2="58" y2="81" gradientUnits="userSpaceOnUse"><stop stop-color="#86C3DB"/><stop offset="1" stop-color="#72B9D5"/></linearGradient>
+      <linearGradient id="mcn-cloud" x1="35" y1="73" x2="35" y2="96" gradientUnits="userSpaceOnUse"><stop stop-color="#F3F7FE"/><stop offset="1" stop-color="#E6EFFC"/></linearGradient>
+    </defs>
+  </svg>`,
+};
+
 const EXTREME_ICONS = {
   // TORNADO: Classic funnel shape descending from a dark cloud
   'tornado': extremeSvg(`
@@ -569,6 +603,7 @@ function wmoInfo(code, isDay, cloudCover) {
 }
 
 function iconSvgFor(key, vars) {
+  if (MOSTLY_CLEAR_ICONS[key]) return MOSTLY_CLEAR_ICONS[key];
   if (EXTREME_ICONS[key]) return EXTREME_ICONS[key];
   const name = KEY_TO_ICON[key] || 'cloudy';
   return meteoIcon(name);
