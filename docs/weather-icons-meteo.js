@@ -243,7 +243,7 @@ function wmoInfo(code, isDay, cloudCover) {
   // cloud-cover percentage (e.g. code 3 "overcast" when only 55% cloudy).
   // For clear/cloud codes, pick the display label/icon directly from the
   // measured cloud cover for a more accurate live condition.
-  if (cloudCover != null && [0, 1, 2, 3, 45, 48].includes(code)) {
+  if (cloudCover != null && [0, 1, 2, 3].includes(code)) {
     const cc = Number(cloudCover);
     if (cc <= 15)      info = { key: day ? "clear-day" : "clear-night", label: "Clear" };
     else if (cc <= 40) info = { key: day ? "mostly-clear-day" : "mostly-clear-night", label: "Mostly Clear" };

@@ -156,7 +156,7 @@ async function fetchWeather() {
   const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
   const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m` +
-    `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day` +
+    `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day,cloud_cover` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
     `&timezone=${encodeURIComponent(TZ)}&forecast_days=7&past_days=1`;
@@ -355,7 +355,8 @@ function render(data, fx) {
     const idx = startIdx + i;
     if (idx >= hourly.time.length) break;
     const hIsDay = hourly.is_day ? !!hourly.is_day[idx] : true;
-    const hi = wmoInfo(hourly.weather_code[idx], hIsDay);
+    const hCC = hourly.cloud_cover ? hourly.cloud_cover[idx] : null;
+    const hi = wmoInfo(hourly.weather_code[idx], hIsDay, hCC);
     const pop = hourly.precipitation_probability[idx];
     const el = document.createElement('div');
     el.className = 'ww-hour';
