@@ -402,7 +402,8 @@ function render(data, fx) {
   // this value for clear/cloud WMO codes (0-3), so it has no effect when
   // Open-Meteo itself is already reporting active precipitation. Temperature
   // stays on cur.temperature_2m (Open-Meteo) regardless.
-  const liveCloudCover = skyCoverAt(skyCoverIntervals, new Date()) ?? cur.cloud_cover;
+  const _skyCoverNow = skyCoverAt(skyCoverIntervals, new Date());
+  const liveCloudCover = _skyCoverNow != null ? _skyCoverNow : cur.cloud_cover;
   let info = wmoInfo(cur.weather_code, isDay, liveCloudCover);
   let displayKey = FORCED_SCENE || info.key;
 

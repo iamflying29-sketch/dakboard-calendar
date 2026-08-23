@@ -1,49 +1,32 @@
-// Professional Meteocons-based weather icons.
-// Replaces the homemade 3D SVGs with high-quality, professionally-designed,
-// animated-ready SVG icons from the open-source Meteocons library.
-// Files are loaded as images so they render crisply at any size.
-
-const METEO_PATH = './meteo_';
-
+const METEO_PATH = "./meteo_";
 const KEY_TO_ICON = {
-  'clear-day':          'clear-day',
-  'clear-night':        'clear-night',
-  'mostly-clear-day':   'partly-cloudy-day',
-  'mostly-clear-night': 'partly-cloudy-night',
-  'partly-cloudy-day':  'partly-cloudy-day',
-  'partly-cloudy-night':'partly-cloudy-night',
-  'mostly-cloudy-day':  'cloudy',
-  'mostly-cloudy-night':'cloudy',
-  'overcast':           'overcast',
-  'fog':                'fog',
-  'drizzle':            'drizzle',
-  'rain':               'rain',
-  'rain-heavy':         'rain',
-  'freezing-rain':      'sleet',
-  'snow':               'snow',
-  'snow-heavy':         'snow',
-  'snow-grains':        'snowflake',
-  'rain-showers':       'rain',
-  'snow-showers':       'snow',
-  'thunderstorm':       'thunderstorms',
-  'thunderstorm-hail':  'hail',
+  "clear-day": "clear-day",
+  "clear-night": "clear-night",
+  "mostly-clear-day": "partly-cloudy-day",
+  "mostly-clear-night": "partly-cloudy-night",
+  "partly-cloudy-day": "partly-cloudy-day",
+  "partly-cloudy-night": "partly-cloudy-night",
+  "mostly-cloudy-day": "cloudy",
+  "mostly-cloudy-night": "cloudy",
+  "overcast": "overcast",
+  "fog": "fog",
+  "drizzle": "drizzle",
+  "rain": "rain",
+  "rain-heavy": "rain",
+  "freezing-rain": "sleet",
+  "snow": "snow",
+  "snow-heavy": "snow",
+  "snow-grains": "snowflake",
+  "rain-showers": "rain",
+  "snow-showers": "snow",
+  "thunderstorm": "thunderstorms",
+  "thunderstorm-hail": "hail"
 };
-
-// High-quality custom SVG icons for rare/extreme/geological scenarios.
-// These are not in the Meteocons set, so we draw them inline.
 function extremeSvg(content) {
   return `<svg class="weather-icon" viewBox="0 0 100 100" style="filter:drop-shadow(0 3px 4px rgba(0,0,0,0.12))">${content}</svg>`;
 }
-
-// The bundled Meteocons set has no dedicated "mostly clear" icon, so
-// 'mostly-clear-day/night' previously reused the same icon as
-// 'partly-cloudy-day/night' -- a large cloud that mostly covers the sun/moon.
-// That looks like "mostly cloudy", the opposite of what it's supposed to
-// represent. These custom icons instead put a large, dominant sun/moon front
-// and center with only a small cloud wisp low in the corner, matching how
-// "mostly clear"/"mostly sunny" is depicted by every mainstream weather app.
 const MOSTLY_CLEAR_ICONS = {
-  'mostly-clear-day': `<svg class="weather-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  "mostly-clear-day": `<svg class="weather-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
     <g id="Sun">
       <circle cx="68" cy="52" r="23" fill="url(#mcd-sun)" stroke="#F8AF18"/>
       <g stroke="#F8AF18" stroke-width="6" stroke-linecap="round">
@@ -59,19 +42,18 @@ const MOSTLY_CLEAR_ICONS = {
       <linearGradient id="mcd-cloud" x1="35" y1="65" x2="35" y2="88" gradientUnits="userSpaceOnUse"><stop stop-color="#F3F7FE"/><stop offset="1" stop-color="#E6EFFC"/></linearGradient>
     </defs>
   </svg>`,
-  'mostly-clear-night': `<svg class="weather-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  "mostly-clear-night": `<svg class="weather-icon" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M56 12c-16 3-28 17-28 34 0 19 15.5 34.5 34.5 34.5 13 0 24.3-7.2 30.1-17.9C71.7 66 55 49.2 55 28.6 55 22.7 56 17.1 56 12z" fill="url(#mcn-moon)" stroke="#72B9D5" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M22 96c-4.5 0-8-3.6-8-8s3.5-8 8-8c1.4 0 2.7.4 3.9 1 2-4.3 6.3-7.3 11.4-7.3 6.4 0 11.7 4.6 12.6 10.7 3.2-.6 6.4 1.7 6.4 5.1 0 3.1-2.5 5.6-5.6 5.6H22z" fill="url(#mcn-cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
     <defs>
       <linearGradient id="mcn-moon" x1="58" y1="12" x2="58" y2="81" gradientUnits="userSpaceOnUse"><stop stop-color="#86C3DB"/><stop offset="1" stop-color="#72B9D5"/></linearGradient>
       <linearGradient id="mcn-cloud" x1="35" y1="73" x2="35" y2="96" gradientUnits="userSpaceOnUse"><stop stop-color="#F3F7FE"/><stop offset="1" stop-color="#E6EFFC"/></linearGradient>
     </defs>
-  </svg>`,
+  </svg>`
 };
-
 const EXTREME_ICONS = {
   // TORNADO: Classic funnel shape descending from a dark cloud
-  'tornado': extremeSvg(`
+  "tornado": extremeSvg(`
     <defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#475569"/><stop offset="100%" stop-color="#1e293b"/></linearGradient></defs>
     <path d="M15 18c0-4 16-8 35-8s35 4 35 8c0 3-10 5-20 6l-8 0c-3 2-5 8-6 14l-3 14c-1 5-2 10-4 14l-2 10c0 3 0 6-1 8l-1 8" stroke="url(#tg)" stroke-width="0" fill="url(#tg)"/>
     <path d="M20 15 Q50 22 80 15 Q72 20 65 22 L60 30 Q55 35 54 42 L52 52 Q51 58 50 64 L49 72 Q48.5 78 48 82 L47.5 88" stroke="#64748b" stroke-width="2" fill="none" opacity="0.6"/>
@@ -82,9 +64,8 @@ const EXTREME_ICONS = {
     <ellipse cx="47.5" cy="89" rx="3" ry="1.5" fill="#475569" opacity="0.7"/>
     <g fill="#94a3b8" opacity="0.4"><circle cx="25" cy="12" r="2"/><circle cx="72" cy="13" r="2"/><circle cx="38" cy="30" r="1.5"/><circle cx="55" cy="45" r="1"/></g>
   `),
-
   // HURRICANE: Satellite-view spiral with clear eye
-  'hurricane': extremeSvg(`
+  "hurricane": extremeSvg(`
     <defs>
       <radialGradient id="hg-eye" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1e3a5f"/><stop offset="100%" stop-color="#0f172a"/></radialGradient>
       <linearGradient id="hg-arm" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#e2e8f0"/><stop offset="100%" stop-color="#94a3b8"/></linearGradient>
@@ -97,9 +78,8 @@ const EXTREME_ICONS = {
     <circle cx="50" cy="50" r="9" fill="url(#hg-eye)"/>
     <circle cx="50" cy="50" r="9" fill="none" stroke="#cbd5e1" stroke-width="1.5" opacity="0.8"/>
   `),
-
   // TROPICAL STORM: Swirling cloud mass with rain bands
-  'tropical-storm': extremeSvg(`
+  "tropical-storm": extremeSvg(`
     <defs><linearGradient id="ts-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#475569"/></linearGradient></defs>
     <circle cx="50" cy="45" r="30" fill="url(#ts-g)" opacity="0.8"/>
     <path d="M50 15 C70 15 85 25 85 40 C85 52 75 58 65 56 C55 54 52 48 50 42" fill="#cbd5e1" opacity="0.85"/>
@@ -111,9 +91,8 @@ const EXTREME_ICONS = {
       <line x1="70" y1="72" x2="68" y2="82"/>
     </g>
   `),
-
   // DERECHO: Bow-shaped storm front with lightning
-  'derecho': extremeSvg(`
+  "derecho": extremeSvg(`
     <defs><linearGradient id="dr-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#334155"/><stop offset="100%" stop-color="#0f172a"/></linearGradient></defs>
     <path d="M5 25 Q50 15 95 25 Q95 45 50 50 Q5 45 5 25 Z" fill="url(#dr-g)"/>
     <path d="M10 30 Q50 22 90 30" stroke="#64748b" stroke-width="2" fill="none" opacity="0.6"/>
@@ -125,9 +104,8 @@ const EXTREME_ICONS = {
     </g>
     <path d="M15 42 Q50 52 85 42" stroke="#475569" stroke-width="1" fill="none" stroke-dasharray="3 3" opacity="0.5"/>
   `),
-
   // SQUALL: Strong wind lines with rain at an angle
-  'squall': extremeSvg(`
+  "squall": extremeSvg(`
     <path d="M10 30 Q40 25 70 30 Q85 32 90 38 Q85 44 70 46 Q40 48 10 44 Z" fill="#475569"/>
     <g stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" opacity="0.7">
       <line x1="12" y1="55" x2="55" y2="52"/><line x1="20" y1="62" x2="70" y2="58"/>
@@ -138,9 +116,8 @@ const EXTREME_ICONS = {
       <line x1="76" y1="46" x2="71" y2="64"/><line x1="84" y1="44" x2="79" y2="62"/>
     </g>
   `),
-
   // WATERSPOUT: Funnel over water with spray
-  'waterspout': extremeSvg(`
+  "waterspout": extremeSvg(`
     <defs><linearGradient id="ws-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#475569"/><stop offset="100%" stop-color="#64748b"/></linearGradient></defs>
     <ellipse cx="50" cy="18" rx="28" ry="8" fill="#334155"/>
     <path d="M35 22 Q50 30 60 22 L56 38 Q52 46 51 55 L50 65 Q49 72 49 78" fill="url(#ws-g)" opacity="0.85"/>
@@ -148,9 +125,8 @@ const EXTREME_ICONS = {
     <path d="M5 86 Q25 80 50 86 Q75 92 95 86" fill="#2563eb" opacity="0.5"/>
     <g fill="#bfdbfe" opacity="0.7"><circle cx="42" cy="80" r="2"/><circle cx="50" cy="78" r="2.5"/><circle cx="58" cy="80" r="2"/><circle cx="46" cy="76" r="1.5"/><circle cx="54" cy="76" r="1.5"/></g>
   `),
-
   // BLIZZARD: Heavy cloud with driving snow and wind
-  'blizzard': extremeSvg(`
+  "blizzard": extremeSvg(`
     <path d="M18 42c-6 0-12-5-12-12s6-12 12-12c2 0 5 1 7 3 3-9 12-15 22-15 12 0 23 9 25 21 5-1 10 3 10 9s-5 10-10 10H18z" fill="#cbd5e1"/>
     <g stroke="#e2e8f0" stroke-width="2" stroke-linecap="round" opacity="0.6">
       <line x1="15" y1="50" x2="45" y2="48"/><line x1="20" y1="60" x2="55" y2="57"/>
@@ -162,9 +138,8 @@ const EXTREME_ICONS = {
       <circle cx="65" cy="78" r="2.5"/><circle cx="80" cy="82" r="3"/><circle cx="50" cy="80" r="2"/>
     </g>
   `),
-
   // ICE STORM: Cloud with icicles hanging down
-  'ice-storm': extremeSvg(`
+  "ice-storm": extremeSvg(`
     <path d="M18 40c-6 0-12-5-12-12s6-12 12-12c2 0 5 1 7 3 3-9 12-15 22-15 12 0 23 9 25 21 5-1 10 3 10 9s-5 10-10 10H18z" fill="#94a3b8"/>
     <g fill="#bfdbfe">
       <path d="M25 42 L27 42 L26 58 Z"/><path d="M34 42 L36 42 L35 62 Z"/>
@@ -177,9 +152,8 @@ const EXTREME_ICONS = {
       <circle cx="62" cy="59" r="2.5"/><circle cx="71" cy="63" r="2.5"/>
     </g>
   `),
-
   // SANDSTORM: Layered wind with sand particles
-  'sandstorm': extremeSvg(`
+  "sandstorm": extremeSvg(`
     <defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fbbf24" stop-opacity="0.2"/><stop offset="100%" stop-color="#92400e" stop-opacity="0.5"/></linearGradient></defs>
     <rect width="100" height="100" fill="url(#sg)" rx="4"/>
     <g stroke="#d97706" stroke-width="3" stroke-linecap="round" opacity="0.5">
@@ -189,9 +163,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#d97706" opacity="0.8"><circle cx="18" cy="25" r="2.5"/><circle cx="42" cy="38" r="3"/><circle cx="72" cy="28" r="2"/><circle cx="85" cy="42" r="2.5"/><circle cx="28" cy="55" r="2"/><circle cx="55" cy="62" r="3"/><circle cx="80" cy="58" r="2.5"/><circle cx="20" cy="75" r="2"/><circle cx="48" cy="78" r="2.5"/><circle cx="75" cy="72" r="2"/></g>
   `),
-
   // DUST STORM: Similar to sand but gray/brown palette
-  'dust-storm': extremeSvg(`
+  "dust-storm": extremeSvg(`
     <defs><linearGradient id="dg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#a8a29e" stop-opacity="0.2"/><stop offset="100%" stop-color="#57534e" stop-opacity="0.5"/></linearGradient></defs>
     <rect width="100" height="100" fill="url(#dg)" rx="4"/>
     <g stroke="#78716c" stroke-width="3" stroke-linecap="round" opacity="0.5">
@@ -201,9 +174,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#78716c" opacity="0.7"><circle cx="18" cy="28" r="2.5"/><circle cx="45" cy="40" r="3"/><circle cx="75" cy="30" r="2"/><circle cx="30" cy="58" r="2.5"/><circle cx="60" cy="55" r="2.5"/><circle cx="85" cy="60" r="2"/><circle cx="22" cy="78" r="2"/><circle cx="50" cy="75" r="3"/><circle cx="78" cy="74" r="2.5"/></g>
   `),
-
   // VOLCANIC ASH: Mountain with ash cloud billowing
-  'volcanic-ash': extremeSvg(`
+  "volcanic-ash": extremeSvg(`
     <path d="M30 85 L50 45 L70 85 Z" fill="#44403c"/>
     <path d="M42 85 L50 60 L58 85 Z" fill="#57534e"/>
     <g fill="#6b7280" opacity="0.75">
@@ -213,9 +185,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#4b5563" opacity="0.5"><circle cx="30" cy="40" r="3"/><circle cx="70" cy="38" r="3"/><circle cx="25" cy="50" r="2"/><circle cx="75" cy="48" r="2"/></g>
   `),
-
   // WILDFIRE SMOKE: Flames at bottom with thick smoke rising
-  'wildfire-smoke': extremeSvg(`
+  "wildfire-smoke": extremeSvg(`
     <g fill="#6b7280" opacity="0.7">
       <circle cx="30" cy="30" r="12"/><circle cx="50" cy="25" r="15"/><circle cx="70" cy="30" r="12"/>
       <circle cx="40" cy="18" r="10"/><circle cx="60" cy="18" r="10"/>
@@ -230,9 +201,8 @@ const EXTREME_ICONS = {
       <path d="M40 90 Q42 82 45 85 Q47 78 50 82 Q52 76 55 82 Q57 78 60 90 Z"/>
     </g>
   `),
-
   // FOREST FIRE: Trees with flames
-  'forest-fire': extremeSvg(`
+  "forest-fire": extremeSvg(`
     <g fill="#166534">
       <path d="M25 90 L25 70 L20 70 L25 60 L20 60 L25 50 L30 50 L30 60 L25 60 L30 70 L25 70 Z"/>
       <path d="M75 90 L75 70 L70 70 L75 60 L70 60 L75 50 L80 50 L80 60 L75 60 L80 70 L75 70 Z"/>
@@ -248,9 +218,8 @@ const EXTREME_ICONS = {
       <circle cx="50" cy="32" r="8"/>
     </g>
   `),
-
   // SMOKE: Billowing gray clouds
-  'smoke': extremeSvg(`
+  "smoke": extremeSvg(`
     <g fill="#6b7280" opacity="0.6">
       <circle cx="25" cy="55" r="14"/><circle cx="45" cy="48" r="16"/><circle cx="65" cy="52" r="14"/><circle cx="80" cy="58" r="10"/>
     </g>
@@ -261,9 +230,8 @@ const EXTREME_ICONS = {
       <circle cx="40" cy="22" r="8"/><circle cx="58" cy="20" r="9"/>
     </g>
   `),
-
   // ASH: Falling ash particles
-  'ash': extremeSvg(`
+  "ash": extremeSvg(`
     <g fill="#6b7280" opacity="0.6">
       <circle cx="50" cy="15" r="12"/><circle cx="35" cy="12" r="9"/><circle cx="65" cy="12" r="9"/>
     </g>
@@ -277,9 +245,8 @@ const EXTREME_ICONS = {
       <ellipse cx="70" cy="76" rx="2" ry="3"/>
     </g>
   `),
-
   // HAZE: Soft layered horizontal bands with sun barely visible
-  'haze': extremeSvg(`
+  "haze": extremeSvg(`
     <circle cx="50" cy="35" r="14" fill="#fbbf24" opacity="0.3"/>
     <g stroke="#a8a29e" stroke-width="4" stroke-linecap="round" opacity="0.5">
       <line x1="8" y1="35" x2="92" y2="35"/><line x1="10" y1="48" x2="90" y2="48"/>
@@ -290,9 +257,8 @@ const EXTREME_ICONS = {
       <line x1="20" y1="68" x2="80" y2="68"/>
     </g>
   `),
-
   // SMOG: City skyline silhouette with thick haze
-  'smog': extremeSvg(`
+  "smog": extremeSvg(`
     <g fill="#374151" opacity="0.6">
       <rect x="15" y="60" width="12" height="30"/><rect x="30" y="50" width="10" height="40"/>
       <rect x="45" y="55" width="14" height="35"/><rect x="62" y="45" width="10" height="45"/>
@@ -305,9 +271,8 @@ const EXTREME_ICONS = {
       <circle cx="30" cy="25" r="10"/><circle cx="55" cy="22" r="12"/><circle cx="75" cy="28" r="9"/>
     </g>
   `),
-
   // ACID RAIN: Green-tinted cloud with neon green drops
-  'acid-rain': extremeSvg(`
+  "acid-rain": extremeSvg(`
     <path d="M18 42c-6 0-12-5-12-12s6-12 12-12c2 0 5 1 7 3 3-9 12-15 22-15 12 0 23 9 25 21 5-1 10 3 10 9s-5 10-10 10H18z" fill="#6b7280"/>
     <path d="M18 42c-6 0-12-5-12-12s6-12 12-12c2 0 5 1 7 3 3-9 12-15 22-15 12 0 23 9 25 21 5-1 10 3 10 9s-5 10-10 10H18z" fill="#84cc16" opacity="0.2"/>
     <g fill="#a3e635">
@@ -317,9 +282,8 @@ const EXTREME_ICONS = {
       <path d="M62 66 Q64 62 66 66 Q64 70 62 66 Z"/>
     </g>
   `),
-
   // FLASH FLOOD: Dark cloud with rushing water and house
-  'flash-flood': extremeSvg(`
+  "flash-flood": extremeSvg(`
     <path d="M15 35c-5 0-10-4-10-9s5-9 10-9c2 0 4 1 6 2 3-7 11-12 20-12 11 0 20 7 22 17 4-1 9 3 9 8s-4 9-9 9H15z" fill="#475569"/>
     <g stroke="#60a5fa" stroke-width="2" stroke-linecap="round" opacity="0.6">
       <line x1="25" y1="38" x2="22" y2="48"/><line x1="40" y1="38" x2="37" y2="48"/>
@@ -330,9 +294,8 @@ const EXTREME_ICONS = {
     <path d="M40 52 L50 44 L60 52 L60 62 L40 62 Z" fill="#92400e" opacity="0.7"/>
     <path d="M44 56 L44 62 L48 62 L48 56 Z" fill="#78350f" opacity="0.6"/>
   `),
-
   // AURORA: Northern lights with stars
-  'aurora': extremeSvg(`
+  "aurora": extremeSvg(`
     <rect width="100" height="100" fill="#0f172a" rx="4"/>
     <g opacity="0.8">
       <path d="M0 80 Q15 50 30 60 Q45 70 50 40 Q55 20 65 35 Q75 50 85 30 Q95 15 100 25" stroke="#4ade80" stroke-width="10" fill="none" opacity="0.6"/>
@@ -341,9 +304,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#ffffff"><circle cx="15" cy="15" r="1.5"/><circle cx="35" cy="10" r="1"/><circle cx="55" cy="8" r="1.5"/><circle cx="75" cy="12" r="1"/><circle cx="90" cy="8" r="1.5"/><circle cx="25" cy="25" r="1"/><circle cx="80" cy="22" r="1"/></g>
   `),
-
   // ECLIPSE: Sun with moon passing in front, corona visible
-  'eclipse': extremeSvg(`
+  "eclipse": extremeSvg(`
     <rect width="100" height="100" fill="#0f172a" rx="4"/>
     <defs><radialGradient id="eg" cx="50%" cy="50%" r="50%"><stop offset="55%" stop-color="#fbbf24" stop-opacity="0.8"/><stop offset="80%" stop-color="#f59e0b" stop-opacity="0.3"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/></radialGradient></defs>
     <circle cx="50" cy="50" r="30" fill="url(#eg)"/>
@@ -351,9 +313,8 @@ const EXTREME_ICONS = {
     <circle cx="53" cy="47" r="18" fill="#0f172a"/>
     <g fill="#ffffff" opacity="0.4"><circle cx="20" cy="20" r="1"/><circle cx="80" cy="25" r="1"/><circle cx="15" cy="75" r="1"/><circle cx="85" cy="80" r="1"/></g>
   `),
-
   // RAINBOW: Colorful arc with cloud
-  'rainbow': extremeSvg(`
+  "rainbow": extremeSvg(`
     <circle cx="70" cy="30" r="12" fill="#e2e8f0"/>
     <circle cx="80" cy="28" r="10" fill="#f1f5f9"/>
     <circle cx="60" cy="32" r="9" fill="#e2e8f0"/>
@@ -366,9 +327,8 @@ const EXTREME_ICONS = {
       <path d="M35 85 A15 15 0 0 1 65 85" stroke="#8b5cf6"/>
     </g>
   `),
-
   // METEOR SHOWER: Night sky with multiple bright streaks
-  'meteor-shower': extremeSvg(`
+  "meteor-shower": extremeSvg(`
     <rect width="100" height="100" fill="#0f172a" rx="4"/>
     <g fill="#ffffff" opacity="0.5"><circle cx="15" cy="20" r="1"/><circle cx="40" cy="12" r="1"/><circle cx="70" cy="18" r="1.2"/><circle cx="88" cy="10" r="1"/><circle cx="55" cy="35" r="1"/></g>
     <g stroke-linecap="round">
@@ -381,9 +341,8 @@ const EXTREME_ICONS = {
       <line x1="40" y1="50" x2="32" y2="72" stroke="#fef3c7" stroke-width="2" opacity="0.6"/>
     </g>
   `),
-
   // METEOR IMPACT: Explosion with shockwave
-  'meteor-impact': extremeSvg(`
+  "meteor-impact": extremeSvg(`
     <defs><radialGradient id="mg" cx="50%" cy="60%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="30%" stop-color="#fbbf24"/><stop offset="60%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#f59e0b" stop-opacity="0"/></radialGradient></defs>
     <circle cx="50" cy="60" r="35" fill="url(#mg)" opacity="0.8"/>
     <circle cx="50" cy="60" r="12" fill="#ffffff"/>
@@ -395,9 +354,8 @@ const EXTREME_ICONS = {
     </g>
     <path d="M45 15 L48 25 L42 28 Z" fill="#78716c"/>
   `),
-
   // ASTEROID IMPACT: Massive fireball with debris
-  'asteroid-impact': extremeSvg(`
+  "asteroid-impact": extremeSvg(`
     <defs><radialGradient id="ag" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="20%" stop-color="#fca5a5"/><stop offset="50%" stop-color="#ef4444"/><stop offset="100%" stop-color="#7f1d1d" stop-opacity="0"/></radialGradient></defs>
     <circle cx="50" cy="50" r="42" fill="url(#ag)" opacity="0.7"/>
     <circle cx="50" cy="50" r="18" fill="#fef2f2"/>
@@ -409,9 +367,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#78716c"><circle cx="25" cy="20" r="3"/><circle cx="78" cy="18" r="2.5"/><circle cx="12" cy="60" r="2"/><circle cx="88" cy="55" r="2.5"/></g>
   `),
-
   // EARTHQUAKE: Cracked ground with seismic waves
-  'earthquake': extremeSvg(`
+  "earthquake": extremeSvg(`
     <rect x="5" y="50" width="90" height="45" fill="#78716c" rx="2"/>
     <rect x="5" y="50" width="90" height="20" fill="#a8a29e" rx="2"/>
     <path d="M5 55 L25 55 L30 48 L35 62 L40 44 L45 66 L50 42 L55 64 L60 46 L65 60 L70 50 L75 55 L95 55" stroke="#dc2626" stroke-width="3" fill="none" stroke-linejoin="round"/>
@@ -421,18 +378,16 @@ const EXTREME_ICONS = {
     <path d="M20 30 L27 22 L35 30" fill="#44403c" opacity="0.5"/>
     <path d="M60 28 L69 20 L78 28" fill="#44403c" opacity="0.5"/>
   `),
-
   // TSUNAMI: Massive wave towering over land
-  'tsunami': extremeSvg(`
+  "tsunami": extremeSvg(`
     <rect x="0" y="75" width="100" height="25" fill="#a8a29e"/>
     <path d="M-5 45 Q10 30 25 35 Q35 38 40 32 Q50 22 60 25 Q70 28 75 22 Q85 12 92 18 Q95 20 95 30 L95 75 L-5 75 Z" fill="#2563eb"/>
     <path d="M-5 50 Q10 38 25 42 Q35 45 42 38 Q50 30 58 32 Q68 35 72 28 Q80 18 88 22 L88 25" stroke="#bfdbfe" stroke-width="3" fill="none" opacity="0.6"/>
     <path d="M75 22 Q82 15 88 18 Q92 20 90 28 Q85 22 80 25 Q75 28 75 22 Z" fill="#93c5fd"/>
     <g fill="#78716c" opacity="0.5"><rect x="15" y="65" width="8" height="10" rx="1"/><rect x="70" y="63" width="10" height="12" rx="1"/></g>
   `),
-
   // VOLCANIC ERUPTION: Mountain erupting with lava and ash
-  'volcanic-eruption': extremeSvg(`
+  "volcanic-eruption": extremeSvg(`
     <path d="M20 90 L42 40 L58 40 L80 90 Z" fill="#44403c"/>
     <path d="M35 90 L45 55 L55 55 L65 90 Z" fill="#57534e"/>
     <g fill="#ef4444" opacity="0.9">
@@ -449,9 +404,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#fbbf24" opacity="0.5"><circle cx="38" cy="70" r="2"/><circle cx="50" cy="65" r="2.5"/><circle cx="62" cy="72" r="2"/></g>
   `),
-
   // LANDSLIDE: Hillside collapsing with debris
-  'landslide': extremeSvg(`
+  "landslide": extremeSvg(`
     <path d="M5 30 L5 90 L90 90 Z" fill="#65a30d" opacity="0.4"/>
     <path d="M25 50 L25 90 L90 90 Z" fill="#8b6f47"/>
     <path d="M35 55 L35 90 L90 90 Z" fill="#a17a4a" opacity="0.8"/>
@@ -463,9 +417,8 @@ const EXTREME_ICONS = {
       <path d="M8 28 L12 20 L16 28 Z"/><path d="M14 32 L18 24 L22 32 Z"/>
     </g>
   `),
-
   // MUDSLIDE: Brown flowing mass with debris
-  'mudslide': extremeSvg(`
+  "mudslide": extremeSvg(`
     <path d="M10 35 L10 90 L95 90 Z" fill="#6b5637"/>
     <path d="M20 45 L20 90 L95 90 Z" fill="#8b6f47" opacity="0.8"/>
     <path d="M30 55 Q50 50 70 60 Q85 68 95 80 L95 90 L30 90 Z" fill="#5c4a2e"/>
@@ -475,9 +428,8 @@ const EXTREME_ICONS = {
     </g>
     <g fill="#3f3f46" opacity="0.5"><rect x="55" y="60" width="3" height="8" rx="1" transform="rotate(20 56 64)"/><rect x="40" y="68" width="2.5" height="7" rx="1" transform="rotate(-15 41 71)"/></g>
   `),
-
   // AVALANCHE: Snow cascading down a mountainside
-  'avalanche': extremeSvg(`
+  "avalanche": extremeSvg(`
     <path d="M50 5 L85 90 L15 90 Z" fill="#94a3b8"/>
     <path d="M50 5 L65 50 L35 50 Z" fill="#cbd5e1"/>
     <path d="M30 50 Q50 45 70 55 Q85 62 90 75 L90 90 L25 90 Z" fill="#f1f5f9"/>
@@ -487,9 +439,8 @@ const EXTREME_ICONS = {
       <circle cx="50" cy="78" r="4"/><circle cx="78" cy="82" r="5"/><circle cx="38" cy="80" r="4"/>
     </g>
   `),
-
   // ROCKFALL: Boulders tumbling down a cliff face
-  'rockfall': extremeSvg(`
+  "rockfall": extremeSvg(`
     <path d="M10 10 L10 90 L30 90 L30 10 Z" fill="#57534e"/>
     <path d="M10 10 L10 90 L25 90 L25 10 Z" fill="#44403c"/>
     <g fill="#78716c">
@@ -504,18 +455,16 @@ const EXTREME_ICONS = {
       <path d="M35 25 Q40 22 45 25"/><path d="M50 40 Q55 37 60 40"/><path d="M55 58 Q60 55 65 58"/>
     </g>
   `),
-
   // GEOLOGICAL EVENT: Seismograph reading with cracked earth
-  'geological-event': extremeSvg(`
+  "geological-event": extremeSvg(`
     <rect x="5" y="50" width="90" height="45" fill="#78716c" rx="2"/>
     <rect x="5" y="50" width="90" height="20" fill="#a8a29e" rx="2"/>
     <path d="M10 35 L20 35 L25 25 L30 45 L35 20 L40 48 L45 22 L50 42 L55 28 L60 38 L65 30 L70 35 L90 35" stroke="#475569" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
     <path d="M35 70 L38 78 L42 72 L45 85 L48 70" stroke="#57534e" stroke-width="1.5" fill="none"/>
     <path d="M60 68 L63 76 L66 70 L70 82" stroke="#57534e" stroke-width="1.5" fill="none"/>
   `),
-
   // APOCALYPSE: Dark sky with ominous glow
-  'apocalypse': extremeSvg(`
+  "apocalypse": extremeSvg(`
     <defs><radialGradient id="apg" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#fca5a5"/><stop offset="40%" stop-color="#ef4444"/><stop offset="100%" stop-color="#450a0a"/></radialGradient></defs>
     <rect width="100" height="100" fill="#0f0000" rx="4"/>
     <circle cx="50" cy="50" r="38" fill="url(#apg)" opacity="0.8"/>
@@ -526,40 +475,71 @@ const EXTREME_ICONS = {
       <line x1="50" y1="50" x2="15" y2="50"/><line x1="50" y1="50" x2="22" y2="25"/>
     </g>
     <circle cx="50" cy="50" r="8" fill="#fef2f2"/>
-  `),
+  `)
 };
-
 function meteoIcon(name) {
   return `<img src="${METEO_PATH}${name}.svg" class="weather-icon" alt="${name}">`;
 }
-
 const WI = {
-  sun(color) { return meteoIcon('clear-day'); },
-  moon(color) { return meteoIcon('clear-night'); },
-  cloud(c1, c2) { return meteoIcon('cloudy'); },
-  cloudSun(sunColor, cloudColor) { return meteoIcon('partly-cloudy-day'); },
-  cloudMoon(moonColor, cloudColor) { return meteoIcon('partly-cloudy-night'); },
-  rain(cloudColor, dropColor) { return meteoIcon('rain'); },
-  snowIcon(cloudColor, flakeColor) { return meteoIcon('snow'); },
-  fog(color) { return meteoIcon('fog'); },
-  bolt(cloudColor, boltColor) { return meteoIcon('thunderstorms'); },
-  drop(color) { return meteoIcon('rain'); },
-  wind(color) { return meteoIcon('wind'); },
-  sunrise(color) { return meteoIcon('clear-day'); },
-  sunset(color) { return meteoIcon('clear-night'); },
-  uv(color) { return meteoIcon('clear-day'); },
-  eye(color) { return meteoIcon('mist'); },
-  aqi(color) { return meteoIcon('wind'); },
-  thermo(color) { return meteoIcon('clear-day'); },
+  sun(color) {
+    return meteoIcon("clear-day");
+  },
+  moon(color) {
+    return meteoIcon("clear-night");
+  },
+  cloud(c1, c2) {
+    return meteoIcon("cloudy");
+  },
+  cloudSun(sunColor, cloudColor) {
+    return meteoIcon("partly-cloudy-day");
+  },
+  cloudMoon(moonColor, cloudColor) {
+    return meteoIcon("partly-cloudy-night");
+  },
+  rain(cloudColor, dropColor) {
+    return meteoIcon("rain");
+  },
+  snowIcon(cloudColor, flakeColor) {
+    return meteoIcon("snow");
+  },
+  fog(color) {
+    return meteoIcon("fog");
+  },
+  bolt(cloudColor, boltColor) {
+    return meteoIcon("thunderstorms");
+  },
+  drop(color) {
+    return meteoIcon("rain");
+  },
+  wind(color) {
+    return meteoIcon("wind");
+  },
+  sunrise(color) {
+    return meteoIcon("clear-day");
+  },
+  sunset(color) {
+    return meteoIcon("clear-night");
+  },
+  uv(color) {
+    return meteoIcon("clear-day");
+  },
+  eye(color) {
+    return meteoIcon("mist");
+  },
+  aqi(color) {
+    return meteoIcon("wind");
+  },
+  thermo(color) {
+    return meteoIcon("clear-day");
+  }
 };
-
 function wmoInfo(code, isDay, cloudCover) {
   const day = !!isDay;
   const table = {
-    0:  { key: day ? "clear-day" : "clear-night", label: "Clear" },
-    1:  { key: day ? "mostly-clear-day" : "mostly-clear-night", label: "Mostly Clear" },
-    2:  { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Partly Cloudy" },
-    3:  { key: "overcast", label: "Overcast" },
+    0: { key: day ? "clear-day" : "clear-night", label: "Clear" },
+    1: { key: day ? "mostly-clear-day" : "mostly-clear-night", label: "Mostly Clear" },
+    2: { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Partly Cloudy" },
+    3: { key: "overcast", label: "Overcast" },
     45: { key: "fog", label: "Fog" },
     48: { key: "fog", label: "Freezing Fog" },
     51: { key: "drizzle", label: "Light Drizzle" },
@@ -583,59 +563,85 @@ function wmoInfo(code, isDay, cloudCover) {
     86: { key: "snow-showers", label: "Snow Showers" },
     95: { key: "thunderstorm", label: "Thunderstorm" },
     96: { key: "thunderstorm-hail", label: "Thunderstorm w/ Hail" },
-    99: { key: "thunderstorm-hail", label: "Severe Thunderstorm" },
+    99: { key: "thunderstorm-hail", label: "Severe Thunderstorm" }
   };
   let info = table[code] || { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Unknown" };
-
-  // Open-Meteo's WMO code is categorical and can disagree with the actual
-  // cloud-cover percentage (e.g. code 3 "overcast" when only 55% cloudy).
-  // For clear/cloud codes, pick the display label/icon directly from the
-  // measured cloud cover for a more accurate live condition.
   if (cloudCover != null && [0, 1, 2, 3].includes(code)) {
     const cc = Number(cloudCover);
-    if (cc <= 15)      info = { key: day ? "clear-day" : "clear-night", label: "Clear" };
+    if (cc <= 15) info = { key: day ? "clear-day" : "clear-night", label: "Clear" };
     else if (cc <= 40) info = { key: day ? "mostly-clear-day" : "mostly-clear-night", label: "Mostly Clear" };
     else if (cc <= 70) info = { key: day ? "partly-cloudy-day" : "partly-cloudy-night", label: "Partly Cloudy" };
     else if (cc <= 95) info = { key: day ? "mostly-cloudy-day" : "mostly-cloudy-night", label: "Mostly Cloudy" };
-    else               info = { key: "overcast", label: "Overcast" };
+    else info = { key: "overcast", label: "Overcast" };
   }
   return info;
 }
-
 function iconSvgFor(key, vars) {
   if (MOSTLY_CLEAR_ICONS[key]) return MOSTLY_CLEAR_ICONS[key];
   if (EXTREME_ICONS[key]) return EXTREME_ICONS[key];
-  const name = KEY_TO_ICON[key] || 'cloudy';
+  const name = KEY_TO_ICON[key] || "cloudy";
   return meteoIcon(name);
 }
-
-// Friendly display labels for all weather keys, including rare/extreme scenes.
 const LABELS = {
-  'clear-day': 'Clear', 'clear-night': 'Clear',
-  'mostly-clear-day': 'Mostly Clear', 'mostly-clear-night': 'Mostly Clear',
-  'partly-cloudy-day': 'Partly Cloudy', 'partly-cloudy-night': 'Partly Cloudy',
-  'mostly-cloudy-day': 'Mostly Cloudy', 'mostly-cloudy-night': 'Mostly Cloudy',
-  'overcast': 'Overcast', 'fog': 'Fog', 'drizzle': 'Drizzle',
-  'rain': 'Rain', 'rain-heavy': 'Heavy Rain', 'freezing-rain': 'Freezing Rain',
-  'snow': 'Snow', 'snow-heavy': 'Heavy Snow', 'snow-grains': 'Snow Grains',
-  'rain-showers': 'Rain Showers', 'snow-showers': 'Snow Showers',
-  'thunderstorm': 'Thunderstorm', 'thunderstorm-hail': 'Severe Thunderstorm',
-  'tornado': 'Tornado', 'waterspout': 'Waterspout', 'hurricane': 'Hurricane',
-  'tropical-storm': 'Tropical Storm', 'derecho': 'Derecho', 'squall': 'Squall',
-  'blizzard': 'Blizzard', 'ice-storm': 'Ice Storm', 'sandstorm': 'Sandstorm',
-  'dust-storm': 'Dust Storm', 'volcanic-ash': 'Volcanic Ash', 'wildfire-smoke': 'Wildfire Smoke',
-  'forest-fire': 'Forest Fire', 'smoke': 'Smoke', 'ash': 'Ash', 'haze': 'Haze', 'smog': 'Smog',
-  'acid-rain': 'Acid Rain', 'aurora': 'Aurora', 'eclipse': 'Solar Eclipse', 'rainbow': 'Rainbow',
-  'meteor-shower': 'Meteor Shower', 'meteor-impact': 'Meteor Impact', 'asteroid-impact': 'Asteroid Impact',
-  'earthquake': 'Earthquake', 'tsunami': 'Tsunami', 'volcanic-eruption': 'Volcanic Eruption',
-  'landslide': 'Landslide', 'mudslide': 'Mudslide', 'avalanche': 'Avalanche', 'rockfall': 'Rockfall',
-  'geological-event': 'Geological Event', 'apocalypse': 'Apocalypse', 'flash-flood': 'Flash Flood',
+  "clear-day": "Clear",
+  "clear-night": "Clear",
+  "mostly-clear-day": "Mostly Clear",
+  "mostly-clear-night": "Mostly Clear",
+  "partly-cloudy-day": "Partly Cloudy",
+  "partly-cloudy-night": "Partly Cloudy",
+  "mostly-cloudy-day": "Mostly Cloudy",
+  "mostly-cloudy-night": "Mostly Cloudy",
+  "overcast": "Overcast",
+  "fog": "Fog",
+  "drizzle": "Drizzle",
+  "rain": "Rain",
+  "rain-heavy": "Heavy Rain",
+  "freezing-rain": "Freezing Rain",
+  "snow": "Snow",
+  "snow-heavy": "Heavy Snow",
+  "snow-grains": "Snow Grains",
+  "rain-showers": "Rain Showers",
+  "snow-showers": "Snow Showers",
+  "thunderstorm": "Thunderstorm",
+  "thunderstorm-hail": "Severe Thunderstorm",
+  "tornado": "Tornado",
+  "waterspout": "Waterspout",
+  "hurricane": "Hurricane",
+  "tropical-storm": "Tropical Storm",
+  "derecho": "Derecho",
+  "squall": "Squall",
+  "blizzard": "Blizzard",
+  "ice-storm": "Ice Storm",
+  "sandstorm": "Sandstorm",
+  "dust-storm": "Dust Storm",
+  "volcanic-ash": "Volcanic Ash",
+  "wildfire-smoke": "Wildfire Smoke",
+  "forest-fire": "Forest Fire",
+  "smoke": "Smoke",
+  "ash": "Ash",
+  "haze": "Haze",
+  "smog": "Smog",
+  "acid-rain": "Acid Rain",
+  "aurora": "Aurora",
+  "eclipse": "Solar Eclipse",
+  "rainbow": "Rainbow",
+  "meteor-shower": "Meteor Shower",
+  "meteor-impact": "Meteor Impact",
+  "asteroid-impact": "Asteroid Impact",
+  "earthquake": "Earthquake",
+  "tsunami": "Tsunami",
+  "volcanic-eruption": "Volcanic Eruption",
+  "landslide": "Landslide",
+  "mudslide": "Mudslide",
+  "avalanche": "Avalanche",
+  "rockfall": "Rockfall",
+  "geological-event": "Geological Event",
+  "apocalypse": "Apocalypse",
+  "flash-flood": "Flash Flood"
 };
-
 function labelForKey(key) {
-  return LABELS[key] || key.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return LABELS[key] || key.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
-
 window.WI = WI;
 window.wmoInfo = wmoInfo;
 window.iconSvgFor = iconSvgFor;

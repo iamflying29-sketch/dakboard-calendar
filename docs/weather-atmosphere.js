@@ -942,17 +942,29 @@ export class WeatherAtmosphere {
   }
 
   // Allow setting live API values for higher fidelity.
-  setWeatherData({ cloudCover, precipitation, windSpeed, visibility, thunder, precipitationType }) {
+  // NOTE: avoid `?.` / `??` here -- this file is loaded as a <script type="module">
+  // on an embedded DAKboard device with an older WebView that does not support
+  // that syntax, and a parse error in a module script silently kills the whole
+  // module (the widget then freezes on "Loading..." forever with no visible error).
+  setWeatherData(opts) {
+    opts = opts || {};
+    const fallback = this.currentParams || {};
+    const cloudCover = opts.cloudCover;
+    const precipitation = opts.precipitation;
+    const windSpeed = opts.windSpeed;
+    const visibility = opts.visibility;
+    const thunder = opts.thunder;
+    const precipitationType = opts.precipitationType;
     if (this.sky) {
       this.sky.set({
         time: this._now(),
         weather: {
-          cloudCover: cloudCover ?? this.currentParams?.cloudCover ?? 0,
-          precipitation: precipitation ?? this.currentParams?.precipitation ?? 0,
-          windSpeed: windSpeed ?? this.currentParams?.windSpeed ?? 2,
-          visibility: visibility ?? this.currentParams?.visibility ?? 45,
-          thunder: thunder ?? this.currentParams?.thunder ?? 0,
-          precipitationType: precipitationType ?? this.currentParams?.precipitationType ?? 'rain',
+          cloudCover: cloudCover != null ? cloudCover : (fallback.cloudCover != null ? fallback.cloudCover : 0),
+          precipitation: precipitation != null ? precipitation : (fallback.precipitation != null ? fallback.precipitation : 0),
+          windSpeed: windSpeed != null ? windSpeed : (fallback.windSpeed != null ? fallback.windSpeed : 2),
+          visibility: visibility != null ? visibility : (fallback.visibility != null ? fallback.visibility : 45),
+          thunder: thunder != null ? thunder : (fallback.thunder != null ? fallback.thunder : 0),
+          precipitationType: precipitationType != null ? precipitationType : (fallback.precipitationType != null ? fallback.precipitationType : 'rain'),
         }
       });
     }

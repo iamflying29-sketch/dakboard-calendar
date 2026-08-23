@@ -28,8 +28,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Build static HTML
         run: python build.py
+
+      - name: Install weather widget build deps
+        run: npm ci
+
+      - name: Build weather widget bundle (ES2020->ES2015 downlevel, no ES module dependency)
+        run: npm run build:weather
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
