@@ -2,8 +2,15 @@ name: Build Calendar Pages
 
 on:
   schedule:
-    # Every day at midnight Pacific (07:00 UTC, or 08:00 UTC during PST)
-    - cron: '0 7 * * *'
+    # GitHub Actions cron has no timezone concept -- it's always UTC. Midnight
+    # Pacific is 07:00 UTC during PDT (summer) but 08:00 UTC during PST
+    # (winter), so a single fixed UTC hour is only correct for half the year.
+    # Firing at both covers midnight Pacific correctly year-round; the
+    # "extra" run in the other half of the year is harmless/idempotent since
+    # build.py always regenerates from the actual current Pacific date
+    # (see build.py's today_local()), and a client-side JS safety net in the
+    # generated HTML also self-corrects "today" from the browser's own clock.
+    - cron: '0 7,8 * * *'
   workflow_dispatch: # Allow manual trigger
   push:
     branches: [main]
