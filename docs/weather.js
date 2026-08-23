@@ -12,7 +12,7 @@ const TZ = "America/Los_Angeles";
 // Open-Meteo is the free, no-account provider that TRMNL also uses; the data
 // itself updates roughly every 15 minutes, so the display always shows the
 // freshest available value without needing an API key.
-const REFRESH_MS = 60 * 1000; // 15 minutes
+const REFRESH_MS = 60 * 1000; // poll every 1 minute
 const LOCATION_LABEL = "Tiburon, CA";
 
 const THEME = document.documentElement.getAttribute('data-theme') || 'day';
