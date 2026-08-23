@@ -144,6 +144,16 @@ function hourLabel(dateStr, idx0) {
   return idx0 ? `${h}${ampm}` : 'NOW';
 }
 
+function minuteLabel(dateStr, idx0) {
+  if (!idx0) return 'NOW';
+  const d = new Date(dateStr);
+  let h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${m}`;
+}
+
 function dayLabel(dateStr, idx) {
   if (idx === 0) return 'Today';
   const d = new Date(dateStr + 'T00:00:00');
@@ -156,6 +166,7 @@ async function fetchWeather() {
   const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
   const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m` +
+    `&minutely_15=temperature_2m,weather_code,precipitation_probability,is_day,cloud_cover` +
     `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day,cloud_cover` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
@@ -301,6 +312,7 @@ function render(data, fx) {
   const { weather, aq, alerts, quake, noaaStorms } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
+  const minutely15 = weather.minutely_15;
   const daily = weather.daily;
   lastDaily = daily;
 
@@ -345,26 +357,29 @@ function render(data, fx) {
     fx.setWeatherData({ cloudCover: cur.cloud_cover / 100 });
   }
 
-  // Hourly strip: current hour + next 11
-  const nowHour = weather.current.time.slice(0, 13) + ':00';
-  let startIdx = hourly.time.findIndex(t => t >= nowHour);
+  // 15-minute forecast strip: current slot + next 11 (covers ~3 hours ahead)
+  // Falls back to hourly data if minutely_15 is unavailable.
+  const m15 = minutely15 && minutely15.time && minutely15.time.length > 0;
+  const stripData = m15 ? minutely15 : hourly;
+  const nowSlot = weather.current.time.slice(0, 16); // "YYYY-MM-DDTHH:MM"
+  let startIdx = stripData.time.findIndex(t => t >= nowSlot);
   if (startIdx < 0) startIdx = 0;
   const hourlyEl = document.getElementById('hourly');
   hourlyEl.innerHTML = '';
   for (let i = 0; i < 12; i++) {
     const idx = startIdx + i;
-    if (idx >= hourly.time.length) break;
-    const hIsDay = hourly.is_day ? !!hourly.is_day[idx] : true;
-    const hCC = hourly.cloud_cover ? hourly.cloud_cover[idx] : null;
-    const hi = wmoInfo(hourly.weather_code[idx], hIsDay, hCC);
-    const pop = hourly.precipitation_probability[idx];
+    if (idx >= stripData.time.length) break;
+    const hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
+    const hCC = stripData.cloud_cover ? stripData.cloud_cover[idx] : null;
+    const hi = wmoInfo(stripData.weather_code[idx], hIsDay, hCC);
+    const pop = stripData.precipitation_probability ? stripData.precipitation_probability[idx] : null;
     const el = document.createElement('div');
     el.className = 'ww-hour';
     el.innerHTML = `
-      <div class="hh">${hourLabel(hourly.time[idx], i)}</div>
+      <div class="hh">${m15 ? minuteLabel(stripData.time[idx], i) : hourLabel(stripData.time[idx], i)}</div>
       ${iconSvgFor(hi.key, vars)}
-      <div class="ht">${Math.round(hourly.temperature_2m[idx])}°</div>
-      <div class="hp">${pop >= 15 ? pop + '%' : ''}</div>
+      <div class="ht">${Math.round(stripData.temperature_2m[idx])}°</div>
+      <div class="hp">${pop != null && pop >= 15 ? pop + '%' : ''}</div>
     `;
     hourlyEl.appendChild(el);
   }
