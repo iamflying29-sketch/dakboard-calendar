@@ -184,6 +184,8 @@ async function fetchWeather() {
 }
 
 let lastDaily = null;
+let lastDisplayKey = null;
+let lastLiveCloudCover = null;
 
 // Free alert / observation feeds for rare/extreme events that Open-Meteo's
 // standard WMO weather codes do not cover (tornado, tsunami, wildfire, etc.).
@@ -434,6 +436,8 @@ function render(data, fx) {
   document.getElementById('hilo').textContent =
     `H:${Math.round(daily.temperature_2m_max[TODAY_IDX])}°  L:${Math.round(daily.temperature_2m_min[TODAY_IDX])}°`;
 
+  lastDisplayKey = displayKey;
+  lastLiveCloudCover = liveCloudCover;
   if (fx) fx.setCondition(displayKey);
   // Drive the atmospheric cloud density from the measured cloud-cover percent
   // so the CGI matches the actual live condition, not just the WMO category.
@@ -572,18 +576,15 @@ async function refresh() {
 }
 
 function boot() {
-  const canvas = document.getElementById('fx');
-  fxEngine = new WeatherAtmosphere(canvas, {
-    sunCore: cssVar('--sun-core'), sunGlow: cssVar('--sun-glow'),
-    moonCore: cssVar('--moon-core'), moonGlow: cssVar('--moon-glow'),
-    cloud: cssVar('--cloud'), cloud2: cssVar('--cloud2'),
-    rain: cssVar('--rain'), snow: cssVar('--snow'), fog: cssVar('--fog'),
-    bolt: cssVar('--bolt'),
-  }, {
-    forceDay: THEME === 'day',
-    forceNight: THEME === 'night',
-  });
-  window.fxEngine = fxEngine;
+  // CRITICAL: kick off the actual weather data fetch/render FIRST, before
+  // touching WebGL/canvas at all, and never let it depend on that setup
+  // succeeding (or even finishing quickly). This device's GPU is weak
+  // enough that a continuous WebGL animation loop can end up starving the
+  // main thread badly -- if the atmosphere engine were created first (as
+  // it used to be), a slow/hung WebGL init could delay or starve the
+  // in-flight fetch() responses indefinitely, leaving the widget's baked-in
+  // "Loading…" text on screen forever with no visible error. The data path
+  // must always win the race, unconditionally.
   refresh();
   setInterval(refresh, REFRESH_MS);
   // Keep the sky's sun-angle color creeping forward smoothly between full
@@ -594,6 +595,47 @@ function boot() {
       if (fxEngine) fxEngine.setSunState(s.frac, s.elevation);
     }
   }, 60 * 1000);
+
+  // Defer the (comparatively heavy) WebGL atmosphere engine to its own
+  // task so it can never block the above, and fully guard its creation --
+  // every call site that uses fxEngine already null-checks it, so if this
+  // throws, is slow, or simply isn't supported on this device, the widget
+  // still shows real weather data; it just runs without the animated sky
+  // background instead of freezing entirely.
+  setTimeout(() => {
+    try {
+      const canvas = document.getElementById('fx');
+      const engine = new WeatherAtmosphere(canvas, {
+        sunCore: cssVar('--sun-core'), sunGlow: cssVar('--sun-glow'),
+        moonCore: cssVar('--moon-core'), moonGlow: cssVar('--moon-glow'),
+        cloud: cssVar('--cloud'), cloud2: cssVar('--cloud2'),
+        rain: cssVar('--rain'), snow: cssVar('--snow'), fog: cssVar('--fog'),
+        bolt: cssVar('--bolt'),
+      }, {
+        forceDay: THEME === 'day',
+        forceNight: THEME === 'night',
+      });
+      fxEngine = engine;
+      window.fxEngine = engine;
+      // The first refresh() likely already completed with fx=null (since
+      // this engine didn't exist yet) -- reapply whatever it last computed
+      // so the sky doesn't sit blank/default until the next 15-minute poll.
+      if (lastDaily) {
+        const s = applySkyForNow(lastDaily);
+        engine.setSunState(s.frac, s.elevation);
+      }
+      if (lastDisplayKey) {
+        engine.setCondition(lastDisplayKey);
+        if (lastLiveCloudCover != null) {
+          engine.setWeatherData({ cloudCover: lastLiveCloudCover / 100 });
+        }
+      }
+    } catch (err) {
+      console.error('Atmosphere engine failed to start; continuing without it', err);
+      fxEngine = null;
+      window.fxEngine = null;
+    }
+  }, 0);
 }
 
 if (document.readyState === 'loading') {
