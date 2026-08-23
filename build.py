@@ -8,11 +8,26 @@ import os
 import urllib.request
 from datetime import datetime, date, timedelta
 from calendar import monthrange
+from zoneinfo import ZoneInfo
 
 ICS_URL = (
     "https://p162-caldav.icloud.com/published/2/"
     "MTE1NjMxNzg1MTExNTYzMfegQlS6W9NY8_0S3H1-zqo1DUrFW82CqRLbbdMA7Q8p"
 )
+
+# All date math is pinned to Tiburon's local timezone. date.today() would use
+# the GitHub Actions runner's UTC clock instead, which is 7-8 hours ahead of
+# Pacific time. Since UTC crosses midnight (and rolls to the "next" calendar
+# day) while it's still afternoon/evening in Tiburon, a naive date.today()
+# call made during that window -- or a run that's delayed past that window,
+# which GitHub Actions cron frequently is -- bakes in TOMORROW's date as
+# "today" for the rest of the Pacific day. Always compute "today" in
+# America/Los_Angeles instead.
+LOCAL_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def today_local():
+    return datetime.now(LOCAL_TZ).date()
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), "docs")
 
@@ -140,7 +155,7 @@ def build_html(theme, today, month_events, year, month):
             ns = (f'<span class="n nt">{dn}</span>' if is_today
                   else f'<span class="n">{dn}</span>')
             xc = " su" if ci == 0 else (" sa" if ci == 6 else "")
-            cells += f'<div class="{cls}{xc}">{ns}{ev}</div>'
+            cells += f'<div class="{cls}{xc}" data-day="{dn}">{ns}{ev}</div>'
 
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -168,19 +183,45 @@ background:{tbg};color:{tt}!important;font-weight:700;font-size:28px;float:right
 border-radius:5px;padding:4px 8px;margin-top:4px;white-space:normal;word-break:break-word;overflow:hidden;line-height:1.3}}
 .em{{font-size:18px;font-weight:700;color:{dc};padding:2px 6px;margin-top:2px}}
 .su .n{{color:{sun_c}}}.sa .n{{color:{sat_c}}}.e .n{{color:{tm}}}.nt{{color:{tt}!important}}
-</style></head><body>
+</style></head><body data-year="{year}" data-month="{month}">
 <div class="w">
 <div class="h"><b>{today.strftime("%B")}</b> <span>{today.year}</span></div>
 <div class="dr">{dow}</div>
 <div class="g">{cells}</div>
 </div>
+<script>
+// Safety net: re-verify "today" using the browser's own clock (in Pacific
+// time) instead of trusting the baked-in build date. This protects against
+// a delayed/stale GitHub Actions build or a cached page still showing
+// yesterday's or tomorrow's date as "today".
+(function() {{
+  try {{
+    var parts = new Intl.DateTimeFormat('en-US', {{
+      timeZone: 'America/Los_Angeles', year: 'numeric', month: 'numeric', day: 'numeric'
+    }}).formatToParts(new Date());
+    var get = function(t) {{ return parseInt(parts.find(function(p) {{ return p.type === t; }}).value, 10); }};
+    var realYear = get('year'), realMonth = get('month'), realDay = get('day');
+    var bakedYear = parseInt(document.body.getAttribute('data-year'), 10);
+    var bakedMonth = parseInt(document.body.getAttribute('data-month'), 10);
+    if (realYear !== bakedYear || realMonth !== bakedMonth) return; // grid is for a different month; can't fix client-side
+    document.querySelectorAll('.c.t').forEach(function(c) {{ c.classList.remove('t'); }});
+    document.querySelectorAll('.n.nt').forEach(function(n) {{ n.classList.remove('nt'); }});
+    var correct = document.querySelector('.c[data-day="' + realDay + '"]');
+    if (correct) {{
+      correct.classList.add('t');
+      var n = correct.querySelector('.n');
+      if (n) n.classList.add('nt');
+    }}
+  }} catch (e) {{ /* ignore, fall back to baked-in date */ }}
+}})();
+</script>
 </body></html>"""
 
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    today = date.today()
+    today = today_local()
     year, month = today.year, today.month
 
     print(f"Fetching iCloud ICS feed...")

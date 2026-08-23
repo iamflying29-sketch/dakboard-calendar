@@ -188,7 +188,6 @@ let lastDaily = null;
 const NWS_ALERTS_URL = `https://api.weather.gov/alerts/active?status=actual&point=${LAT},${LON}`;
 const USGS_QUAKE_URL = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${LAT}&longitude=${LON}&maxradiuskm=200&minmagnitude=4.0&starttime=`;
 const NOAA_STORMS_URL = 'https://noaa-storm-proxy.iamflying29-sketch.deno.net';
-const NOAA_STORM_RADIUS_KM = 2500; // catch Eastern/Central Pacific storms that could affect CA
 
 const NWS_EVENT_MAP = [
   { re: /tornado/i, key: 'tornado', label: 'Tornado Warning', severity: 5 },
@@ -278,25 +277,18 @@ function chooseAlertCondition(alerts, quake, noaaStorms) {
   }
   if (best) return { key: best.key, label: best.label, source: 'NWS' };
 
-  // NOAA/NHC active tropical systems (Atlantic / Eastern Pacific / Central Pacific).
-  // Only considered relevant if they are within a reasonable distance of Tiburon.
-  if (noaaStorms && Array.isArray(noaaStorms.activeStorms)) {
-    for (const s of noaaStorms.activeStorms) {
-      if (s.latitudeNumeric == null || s.longitudeNumeric == null) continue;
-      const dist = havKm(LAT, LON, s.latitudeNumeric, s.longitudeNumeric);
-      if (dist > NOAA_STORM_RADIUS_KM) continue;
-      const cls = (s.classification || '').toUpperCase();
-      let key = 'tropical-storm', label = 'Tropical Storm', severity = 3;
-      if (cls === 'HU') { key = 'hurricane'; label = 'Hurricane'; severity = 4.5; }
-      else if (cls === 'TS') { key = 'tropical-storm'; label = 'Tropical Storm'; severity = 4; }
-      else if (cls === 'TD') { key = 'tropical-storm'; label = 'Tropical Depression'; severity = 2.5; }
-      const score = severity * 10 + Math.max(0, 5 - Math.round(dist / 500));
-      if (!best || score > best.score) {
-        best = { key, label: `${label} ${s.name || s.id || ''}`.trim(), score };
-      }
-    }
-  }
-  if (best) return { key: best.key, label: best.label, source: 'NOAA' };
+  // NOTE: We intentionally do NOT use raw NHC storm positions (noaaStorms) to
+  // override the displayed condition here. A storm's center coordinates only
+  // say where it is on the globe -- they say nothing about whether it
+  // actually affects Tiburon. The NWS_ALERTS_URL query above is already
+  // scoped to this exact point (lat/lon), so if a tropical system (or any
+  // other hazard) is genuinely forecast to affect Tiburon, the National
+  // Weather Service will issue a real watch/warning/advisory for this point
+  // and it will be caught by the NWS_EVENT_MAP loop above. Tropical
+  // storms/hurricanes almost never reach Northern California at all, so a
+  // "nearby" raw-distance check produced false positives (e.g. a hurricane
+  // thousands of miles away in the Central Pacific incorrectly showing as
+  // Tiburon's current condition). See dakboard-calendar AGENTS notes.
 
   if (quake) {
     return {
