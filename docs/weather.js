@@ -282,8 +282,8 @@ function chooseAlertCondition(alerts, quake, noaaStorms) {
   // Only considered relevant if they are within a reasonable distance of Tiburon.
   if (noaaStorms && Array.isArray(noaaStorms.activeStorms)) {
     for (const s of noaaStorms.activeStorms) {
-      if (s.latitude == null || s.longitude == null) continue;
-      const dist = havKm(LAT, LON, s.latitude, s.longitude);
+      if (s.latitudeNumeric == null || s.longitudeNumeric == null) continue;
+      const dist = havKm(LAT, LON, s.latitudeNumeric, s.longitudeNumeric);
       if (dist > NOAA_STORM_RADIUS_KM) continue;
       const cls = (s.classification || '').toUpperCase();
       let key = 'tropical-storm', label = 'Tropical Storm', severity = 3;
