@@ -90,7 +90,7 @@ const KEY_TABLE = {
   'mostly-cloudy-day':  { ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },
   'mostly-cloudy-night':{ ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },
   'overcast':           WMO_ATMOSPHERE_TABLE[3],
-  'fog':                WMO_ATMOSPHERE_TABLE[45],
+  'fog':                { ...WMO_ATMOSPHERE_TABLE[45], overlay: 'fog-bank' },
   'drizzle':            WMO_ATMOSPHERE_TABLE[53],
   'rain':               WMO_ATMOSPHERE_TABLE[63],
   'rain-heavy':         WMO_ATMOSPHERE_TABLE[65],
@@ -281,6 +281,7 @@ class WeatherOverlay {
     else if (this.effect === 'rockfall') this._drawRockfall(ctx, w, h);
     else if (this.effect === 'acid-rain') this._drawAcidRain(ctx, w, h);
     else if (this.effect === 'fire') this._drawFire(ctx, w, h);
+    else if (this.effect === 'fog-bank') this._drawFogBank(ctx, w, h);
     else if (this.effect === 'clear-day') this._drawClearDay(ctx, w, h);
     else if (this.effect === 'clear-night') this._drawClearNight(ctx, w, h);
     else if (this.particles.length) this._drawParticles(ctx, w, h);
@@ -397,18 +398,31 @@ class WeatherOverlay {
   _drawAurora(ctx, w, h) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
-    for (let band = 0; band < 3; band++) {
-      const hue = [140, 170, 200][band];
-      ctx.fillStyle = `hsla(${hue}, 80%, 65%, 0.18)`;
-      ctx.beginPath();
-      const baseY = h * (0.15 + band * 0.08);
-      ctx.moveTo(0, baseY);
-      for (let x = 0; x <= w; x += 12) {
-        const y = baseY + Math.sin(x * 0.01 + this.t * 0.02 + band) * 40 + Math.sin(x * 0.003 + this.t * 0.01) * 60;
-        ctx.lineTo(x, y);
+    // Draw each aurora curtain as a soft ribbon confined to a limited band
+    // height (not filled all the way to the bottom of the screen, which
+    // previously looked like a solid green landmass instead of flowing
+    // lights). Each ribbon is built from many thin, vertically-faded
+    // segments so it reads as a luminous curtain of light.
+    const ribbons = [
+      { hue: 140, baseY: 0.16, amp: 55, speed: 0.015, thickness: 110 },
+      { hue: 165, baseY: 0.26, amp: 70, speed: 0.011, thickness: 130 },
+      { hue: 195, baseY: 0.36, amp: 50, speed: 0.02,  thickness: 90 },
+    ];
+    for (const rb of ribbons) {
+      const baseY = h * rb.baseY;
+      const step = 10;
+      for (let x = 0; x <= w; x += step) {
+        const y = baseY
+          + Math.sin(x * 0.012 + this.t * rb.speed) * rb.amp
+          + Math.sin(x * 0.004 + this.t * rb.speed * 0.6) * rb.amp * 0.6;
+        const shimmer = 0.55 + 0.45 * Math.sin(x * 0.05 + this.t * 0.08);
+        const grad = ctx.createLinearGradient(0, y - rb.thickness * 0.5, 0, y + rb.thickness * 0.5);
+        grad.addColorStop(0, `hsla(${rb.hue}, 85%, 65%, 0)`);
+        grad.addColorStop(0.5, `hsla(${rb.hue}, 85%, 65%, ${0.22 * shimmer})`);
+        grad.addColorStop(1, `hsla(${rb.hue}, 85%, 65%, 0)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(x, y - rb.thickness * 0.5, step + 2, rb.thickness);
       }
-      ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
-      ctx.fill();
     }
     ctx.restore();
   }
@@ -443,6 +457,32 @@ class WeatherOverlay {
       ctx.arc(cx, cy, rr, Math.PI, 0);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  _drawFogBank(ctx, w, h) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    // Layered, slowly drifting horizontal fog bands with soft vertical falloff
+    // so it reads as a real ground-hugging fog bank rather than a flat tint.
+    const bands = 5;
+    for (let i = 0; i < bands; i++) {
+      const yCenter = h * (0.25 + i * 0.16);
+      const drift = Math.sin(this.t * 0.006 + i * 1.7) * 40;
+      const bob = Math.sin(this.t * 0.01 + i) * 12;
+      const grad = ctx.createLinearGradient(0, yCenter - 60 + bob, 0, yCenter + 60 + bob);
+      grad.addColorStop(0, 'rgba(235,238,242,0)');
+      grad.addColorStop(0.5, `rgba(235,238,242,${0.22 - i * 0.02})`);
+      grad.addColorStop(1, 'rgba(235,238,242,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(drift - 100, 0, w + 200, h);
+    }
+    // Overall soft whiteout wash, heavier near the bottom (ground fog).
+    const wash = ctx.createLinearGradient(0, 0, 0, h);
+    wash.addColorStop(0, 'rgba(240,242,246,0.06)');
+    wash.addColorStop(1, 'rgba(240,242,246,0.28)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, w, h);
     ctx.restore();
   }
 
@@ -821,14 +861,15 @@ export class WeatherAtmosphere {
     }
 
     try {
-      // Keep the WebGL load modest on the DAKboard CPU v5: 0.4x res, 20 fps.
-      // The shader still looks cinematic and avoids context-lost stutter.
+      // Balance visual quality against the DAKboard CPU v5's limited GPU:
+      // 0.55x res / 24 fps is noticeably crisper than the previous 0.4x/20fps
+      // while still staying well short of full native resolution.
       this.sky = new Atmosphere(canvas, {
         time: this._now(),
         location: this.location,
         weather: WMO_ATMOSPHERE_TABLE[0],
-        resolutionScale: 0.4,
-        fps: 20,
+        resolutionScale: 0.55,
+        fps: 24,
         colorSpace: 'srgb',
         celestial: { bortle: 6, milkyWay: 0, meteors: 0 },
       });
