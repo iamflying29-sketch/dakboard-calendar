@@ -176,7 +176,7 @@ let lastDaily = null;
 // standard WMO weather codes do not cover (tornado, tsunami, wildfire, etc.).
 const NWS_ALERTS_URL = `https://api.weather.gov/alerts/active?status=actual&point=${LAT},${LON}`;
 const USGS_QUAKE_URL = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${LAT}&longitude=${LON}&maxradiuskm=200&minmagnitude=4.0&starttime=`;
-const NOAA_STORMS_URL = 'https://noaa-storm-proxy.YOUR_CLOUDFLARE_ACCOUNT.workers.dev'; // see docs/noaa-storm-proxy.worker.js
+const NOAA_STORMS_URL = 'https://noaa-storm-proxy-YOUR_PROJECT.deno.dev'; // deploy docs/noaa-storm-proxy.deno.js on Deno Deploy
 const NOAA_STORM_RADIUS_KM = 2500; // catch Eastern/Central Pacific storms that could affect CA
 
 const NWS_EVENT_MAP = [
