@@ -38,42 +38,42 @@ const WMO_ATMOSPHERE_TABLE = {
   45: { cloudCover: 0.75, precipitation: 0,   windSpeed: 1,  visibility: 0.6, thunder: 0 },
   48: { cloudCover: 0.78, precipitation: 0,   windSpeed: 1,  visibility: 0.4, thunder: 0 },
 
-  // Group 5x: drizzle
-  51: { cloudCover: 0.60, precipitation: 1,   windSpeed: 3,  visibility: 8,  thunder: 0, precipitationType: 'rain' },
-  53: { cloudCover: 0.68, precipitation: 3,   windSpeed: 4,  visibility: 6,  thunder: 0, precipitationType: 'rain' },
-  55: { cloudCover: 0.75, precipitation: 6,   windSpeed: 5,  visibility: 4,  thunder: 0, precipitationType: 'rain' },
+  // Group 5x: drizzle (very fine, low-intensity precipitation)
+  51: { cloudCover: 0.62, precipitation: 0.2, windSpeed: 2,  visibility: 10, thunder: 0, precipitationType: 'rain' },
+  53: { cloudCover: 0.68, precipitation: 0.5, windSpeed: 3,  visibility: 8,  thunder: 0, precipitationType: 'rain' },
+  55: { cloudCover: 0.75, precipitation: 1.2, windSpeed: 4,  visibility: 6,  thunder: 0, precipitationType: 'rain' },
 
   // Group 56/57: freezing drizzle
-  56: { cloudCover: 0.70, precipitation: 2,   windSpeed: 3,  visibility: 3,  thunder: 0, precipitationType: 'rain' },
-  57: { cloudCover: 0.76, precipitation: 5,   windSpeed: 4,  visibility: 2,  thunder: 0, precipitationType: 'rain' },
+  56: { cloudCover: 0.70, precipitation: 0.3, windSpeed: 3,  visibility: 3,  thunder: 0, precipitationType: 'rain' },
+  57: { cloudCover: 0.76, precipitation: 1.0, windSpeed: 4,  visibility: 2,  thunder: 0, precipitationType: 'rain' },
 
   // Group 6x: rain
-  61: { cloudCover: 0.78, precipitation: 4,   windSpeed: 5,  visibility: 8,  thunder: 0, precipitationType: 'rain' },
-  63: { cloudCover: 0.85, precipitation: 10,  windSpeed: 6,  visibility: 6,  thunder: 0, precipitationType: 'rain' },
-  65: { cloudCover: 0.92, precipitation: 22,  windSpeed: 8,  visibility: 4,  thunder: 0, precipitationType: 'rain' },
+  61: { cloudCover: 0.78, precipitation: 2.0, windSpeed: 4,  visibility: 10, thunder: 0, precipitationType: 'rain' },
+  63: { cloudCover: 0.85, precipitation: 5.0, windSpeed: 6,  visibility: 8,  thunder: 0, precipitationType: 'rain' },
+  65: { cloudCover: 0.92, precipitation: 18,  windSpeed: 8,  visibility: 4,  thunder: 0, precipitationType: 'rain' },
 
   // Group 66/67: freezing rain
-  66: { cloudCover: 0.85, precipitation: 6,   windSpeed: 5,  visibility: 2,  thunder: 0, precipitationType: 'rain' },
-  67: { cloudCover: 0.90, precipitation: 14,  windSpeed: 7,  visibility: 1,  thunder: 0, precipitationType: 'rain' },
+  66: { cloudCover: 0.85, precipitation: 2.0, windSpeed: 5,  visibility: 2,  thunder: 0, precipitationType: 'rain' },
+  67: { cloudCover: 0.90, precipitation: 10,  windSpeed: 7,  visibility: 1,  thunder: 0, precipitationType: 'rain' },
 
   // Group 7x: snow
-  71: { cloudCover: 0.78, precipitation: 1.5, windSpeed: 4,  visibility: 3,  thunder: 0, precipitationType: 'snow' },
-  73: { cloudCover: 0.85, precipitation: 4,   windSpeed: 5,  visibility: 2,  thunder: 0, precipitationType: 'snow' },
-  75: { cloudCover: 0.92, precipitation: 10,  windSpeed: 7,  visibility: 1,  thunder: 0, precipitationType: 'snow' },
+  71: { cloudCover: 0.78, precipitation: 0.8, windSpeed: 4,  visibility: 3,  thunder: 0, precipitationType: 'snow' },
+  73: { cloudCover: 0.85, precipitation: 2.5, windSpeed: 5,  visibility: 2,  thunder: 0, precipitationType: 'snow' },
+  75: { cloudCover: 0.92, precipitation: 8,   windSpeed: 7,  visibility: 1,  thunder: 0, precipitationType: 'snow' },
 
   // Group 77: snow grains
-  77: { cloudCover: 0.70, precipitation: 0.8, windSpeed: 5,  visibility: 2,  thunder: 0, precipitationType: 'snow' },
+  77: { cloudCover: 0.70, precipitation: 0.5, windSpeed: 5,  visibility: 2,  thunder: 0, precipitationType: 'snow' },
 
-  // Group 8x: showers
-  80: { cloudCover: 0.55, precipitation: 4,   windSpeed: 5,  visibility: 10, thunder: 0, precipitationType: 'rain' },
-  81: { cloudCover: 0.65, precipitation: 10,  windSpeed: 6,  visibility: 8,  thunder: 0, precipitationType: 'rain' },
-  82: { cloudCover: 0.75, precipitation: 30,  windSpeed: 8,  visibility: 5,  thunder: 0, precipitationType: 'rain' },
-  85: { cloudCover: 0.55, precipitation: 2,   windSpeed: 5,  visibility: 4,  thunder: 0, precipitationType: 'snow' },
-  86: { cloudCover: 0.70, precipitation: 12,  windSpeed: 7,  visibility: 2,  thunder: 0, precipitationType: 'snow' },
+  // Group 8x: showers (convective, more broken/spotty cloud, add convection)
+  80: { cloudCover: 0.55, precipitation: 2.5, windSpeed: 5,  visibility: 12, thunder: 0, precipitationType: 'rain', convection: 0.55 },
+  81: { cloudCover: 0.65, precipitation: 6.0, windSpeed: 6,  visibility: 8,  thunder: 0, precipitationType: 'rain', convection: 0.70 },
+  82: { cloudCover: 0.75, precipitation: 25,  windSpeed: 8,  visibility: 4,  thunder: 0, precipitationType: 'rain', convection: 0.85 },
+  85: { cloudCover: 0.55, precipitation: 1.0, windSpeed: 5,  visibility: 4,  thunder: 0, precipitationType: 'snow', convection: 0.45 },
+  86: { cloudCover: 0.70, precipitation: 6.0, windSpeed: 7,  visibility: 2,  thunder: 0, precipitationType: 'snow', convection: 0.70 },
 
   // Group 9x: thunderstorms
-  95: { cloudCover: 0.96, precipitation: 25,  windSpeed: 10, visibility: 5,  thunder: 1.0, precipitationType: 'rain' },
-  96: { cloudCover: 0.97, precipitation: 30,  windSpeed: 12, visibility: 4,  thunder: 1.0, precipitationType: 'rain', convection: 0.85 },
+  95: { cloudCover: 0.96, precipitation: 15,  windSpeed: 10, visibility: 5,  thunder: 1.0, precipitationType: 'rain', convection: 0.75 },
+  96: { cloudCover: 0.97, precipitation: 25,  windSpeed: 12, visibility: 4,  thunder: 1.0, precipitationType: 'rain', convection: 0.85 },
   99: { cloudCover: 0.99, precipitation: 45,  windSpeed: 15, visibility: 3,  thunder: 1.0, precipitationType: 'rain', convection: 0.95 },
 };
 
@@ -98,14 +98,14 @@ const KEY_TABLE = {
   'drizzle':            WMO_ATMOSPHERE_TABLE[53],
   'rain':               WMO_ATMOSPHERE_TABLE[63],
   'rain-heavy':         WMO_ATMOSPHERE_TABLE[65],
-  'freezing-rain':      WMO_ATMOSPHERE_TABLE[67],
+  'freezing-rain':      { ...WMO_ATMOSPHERE_TABLE[67], overlay: 'ice' },
   'snow':               WMO_ATMOSPHERE_TABLE[73],
   'snow-heavy':         WMO_ATMOSPHERE_TABLE[75],
   'snow-grains':        WMO_ATMOSPHERE_TABLE[77],
   'rain-showers':       WMO_ATMOSPHERE_TABLE[81],
   'snow-showers':       WMO_ATMOSPHERE_TABLE[86],
   'thunderstorm':       WMO_ATMOSPHERE_TABLE[95],
-  'thunderstorm-hail':  WMO_ATMOSPHERE_TABLE[99],
+  'thunderstorm-hail':  { ...WMO_ATMOSPHERE_TABLE[96], overlay: 'hail' },
 };
 
 // ---------------------------------------------------------------------------
@@ -202,12 +202,12 @@ class WeatherOverlay {
     this.t = 0;
     this.particles = [];
     // Pre-seed particles based on effect
-    if (effect && ['clear-day','clear-night','sand','dust','ash','smoke','haze','snow-blizzard','volcano','landslide','mudslide','avalanche','rockfall','earthquake','tsunami','acid-rain','fire'].includes(effect)) {
+    if (effect && ['clear-day','clear-night','sand','dust','ash','smoke','haze','snow-blizzard','volcano','landslide','mudslide','avalanche','rockfall','earthquake','tsunami','acid-rain','fire','hail'].includes(effect)) {
       const count = {
         'clear-day': 35, 'clear-night': 60,
         sand: 300, dust: 250, ash: 200, smoke: 150, haze: 100, 'snow-blizzard': 400,
         volcano: 300, landslide: 250, mudslide: 300, avalanche: 400, rockfall: 200, earthquake: 250, tsunami: 0,
-        'acid-rain': 120, fire: 150
+        'acid-rain': 120, fire: 150, hail: 100
       }[effect] || 300;
       for (let i = 0; i < count; i++) this.particles.push(this._newParticle(effect));
     }
@@ -248,6 +248,8 @@ class WeatherOverlay {
         return { x: this._rand(0, w), y: this._rand(h * 0.6, h), r: this._rand(1, 4), v: this._rand(-1, 1), vy: this._rand(-1, -3), op: this._rand(0.3, 0.7), life: this._rand(10, 50) };
       case 'acid-rain':
         return { x: this._rand(0, w), y: this._rand(0, h), len: this._rand(14, 28), v: this._rand(9, 16), op: this._rand(0.35, 0.75) };
+      case 'hail':
+        return { x: this._rand(0, w), y: this._rand(-h, 0), r: this._rand(2, 6), v: this._rand(6, 16), vy: this._rand(18, 32), op: this._rand(0.55, 0.9), rot: this._rand(0, Math.PI * 2), rotv: this._rand(-0.3, 0.3) };
       case 'fire':
         return { x: this._rand(0, w), y: this._rand(h * 0.55, h), r: this._rand(2, 7), v: this._rand(-1, 2), vy: this._rand(-3, -0.5), op: this._rand(0.4, 0.9), life: this._rand(20, 70) };
       default:
@@ -270,6 +272,7 @@ class WeatherOverlay {
     if (this.effect === 'tornado') this._drawTornado(ctx, w, h);
     else if (this.effect === 'hurricane') this._drawHurricane(ctx, w, h);
     else if (this.effect === 'lightning') this._drawLightningBolts(ctx, w, h);
+    else if (this.effect === 'hail') this._drawHail(ctx, w, h);
     else if (this.effect === 'ice') this._drawIce(ctx, w, h);
     else if (this.effect === 'aurora') this._drawAurora(ctx, w, h);
     else if (this.effect === 'eclipse') this._drawEclipse(ctx, w, h);
@@ -395,6 +398,30 @@ class WeatherOverlay {
         ctx.lineTo(x + Math.cos(ang) * r2, y + Math.sin(ang) * r2);
       }
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _drawHail(ctx, w, h) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.shadowBlur = 2;
+    ctx.shadowColor = 'rgba(160, 190, 220, 0.35)';
+    for (const p of this.particles) {
+      p.x += p.v;
+      p.y += p.vy;
+      p.rot += p.rotv;
+      if (p.y > h + p.r) {
+        p.y = this._rand(-30, -10);
+        p.x = this._rand(0, w);
+        p.v = this._rand(6, 16);
+        p.vy = this._rand(18, 32);
+      }
+      ctx.globalAlpha = p.op;
+      ctx.fillStyle = '#e8f0f8';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
