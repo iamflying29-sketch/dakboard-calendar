@@ -53,22 +53,33 @@ function defaultCloudMix(cover, precipitation, convection, haze) {
   const c = clamp01(cover);
   const wet = clamp01(precipitation);
   const dry = 1 - wet;
-  const visibleAloft = 1 - ramp(c, 0.45, 0.85);
-  const stillLumpy = 1 - ramp(c, 0.5, 0.85);
+  // The live NWS cover is a 0..1 percentage. Most people read "partly cloudy"
+  // (0.25-0.50) as *scattered* clouds with lots of blue, "mostly cloudy"
+  // (0.60-0.80) as broken with gaps, and "overcast" (0.80+) as a solid deck.
+  // The previous mix layered every genus at full strength and made 45% cover
+  // look like a broken/overcast sky. This version keeps the genus distribution
+  // but uses lighter, stage-specific amounts so the aggregate occlusion tracks
+  // the reported value instead of overshooting it.
+  const visibleAloft = 1 - ramp(c, 0.28, 0.72);
+  const stillLumpy = 1 - ramp(c, 0.45, 0.85);
+  const isPartly = c >= 0.15 && c < 0.52;
+  const isBroken = c >= 0.52 && c < 0.85;
+  const isOvercast = c >= 0.85;
+  const hasRain = wet > 0.05;
   return {
-    cirrus: ramp(c, 0.02, 0.45) * 0.7 * visibleAloft,
-    cirrostratus: ramp(c, 0.1, 0.45) * 0.45 * visibleAloft,
-    cirrocumulus: ramp(c, 0.14, 0.4) * 0.35 * visibleAloft * dry,
-    altostratus: ramp(c, 0.55, 0.9) * 0.85 * dry,
-    altocumulus: ramp(c, 0.22, 0.55) * 0.7 * (1 - ramp(c, 0.7, 0.95)) * dry,
-    nimbostratus: wet * ramp(c, 0.5, 0.85),
-    stratus: ramp(c, 0.5, 0.9) * haze * 0.9,
-    stratocumulus: ramp(c, 0.3, 0.75) * 0.85 * (1 - wet * 0.7),
-    cumulus: ramp(c, 0.03, 0.35) * stillLumpy * dry,
+    cirrus: ramp(c, 0.05, 0.55) * 0.42 * visibleAloft,
+    cirrostratus: ramp(c, 0.1, 0.55) * 0.25 * visibleAloft,
+    cirrocumulus: ramp(c, 0.14, 0.45) * (isPartly ? 0.22 : 0.14) * visibleAloft * dry,
+    altostratus: ramp(c, 0.45, 0.82) * (hasRain ? 0.85 : 0.55) * (1 - ramp(c, 0.82, 0.98)) * dry,
+    altocumulus: ramp(c, 0.22, 0.55) * (isPartly ? 0.35 : (isBroken ? 0.62 : 0.45)) * (1 - ramp(c, 0.72, 0.95)) * dry,
+    nimbostratus: wet * ramp(c, 0.55, 0.88),
+    stratus: isOvercast ? ramp(c, 0.65, 0.95) * 0.85 * (1 - wet * 0.4) : (haze > 0.1 ? haze * 0.45 : 0),
+    stratocumulus: ramp(c, 0.28, 0.78) * (isPartly ? 0.38 : (isBroken ? 0.82 : 0.85)) * (1 - wet * 0.6) * dry,
+    cumulus: ramp(c, 0.08, 0.48) * (isPartly ? 0.42 : 0.28) * stillLumpy * dry,
     // Cap convection by cloud cover. Cumulonimbus is itself a cloud, so a
     // towering cumulonimbus in a sky reported as zero cloud cover is a
     // contradiction.
-    cumulonimbus: clamp01(convection) * ramp(c, 0.02, 0.25)
+    cumulonimbus: clamp01(convection) * ramp(c, 0.12, 0.45)
   };
 }
 function aggregateCover(mix) {

@@ -31,7 +31,7 @@ const WMO_ATMOSPHERE_TABLE = {
 
   // Group 1-3: cloud cover
   1:  { cloudCover: 0.22, precipitation: 0,   windSpeed: 3,  visibility: 35, thunder: 0 },
-  2:  { cloudCover: 0.45, precipitation: 0,   windSpeed: 4,  visibility: 30, thunder: 0 },
+  2:  { cloudCover: 0.35, precipitation: 0,   windSpeed: 4,  visibility: 30, thunder: 0 },
   3:  { cloudCover: 0.92, precipitation: 0,   windSpeed: 5,  visibility: 18, thunder: 0 },
 
   // Group 45/48: fog / rime fog
