@@ -142,10 +142,13 @@ function isPrecipitationOrFogCode(code) {
 function cloudCoverToCondition(skyCover, isDay) {
   const day = !!isDay;
   const t = Math.max(0, Math.min(100, Number(skyCover) || 0));
-  if (t <= 15) return { key: day ? 'clear-day' : 'clear-night', label: 'Clear' };
-  if (t <= 40) return { key: day ? 'mostly-clear-day' : 'mostly-clear-night', label: 'Mostly Clear' };
-  if (t <= 70) return { key: day ? 'partly-cloudy-day' : 'partly-cloudy-night', label: 'Partly Cloudy' };
-  if (t <= 95) return { key: day ? 'mostly-cloudy-day' : 'mostly-cloudy-night', label: 'Mostly Cloudy' };
+  // These thresholds are deliberately conservative so the displayed label/icon
+  // and CGI never overstate cloudiness. "Mostly Cloudy" must still show
+  // substantial sky/sun/moon -- it is NOT overcast.
+  if (t <= 12) return { key: day ? 'clear-day' : 'clear-night', label: 'Clear' };
+  if (t <= 30) return { key: day ? 'mostly-clear-day' : 'mostly-clear-night', label: 'Mostly Clear' };
+  if (t <= 50) return { key: day ? 'partly-cloudy-day' : 'partly-cloudy-night', label: 'Partly Cloudy' };
+  if (t <= 80) return { key: day ? 'mostly-cloudy-day' : 'mostly-cloudy-night', label: 'Mostly Cloudy' };
   return { key: 'overcast', label: 'Overcast' };
 }
 
@@ -1312,22 +1315,29 @@ function render(data, fx) {
   const sunState = applySkyForNow(daily);
   if (fx) fx.setSunState(sunState.frac, sunState.elevation);
 
-  const isDay = !!cur.is_day;
-  // The single Open-Meteo "current" snapshot (weather_code + cloud_cover) can
-  // be stale or too smooth for this coastal microclimate, while the NWS
-  // gridpoint forecast can occasionally miss a rapidly changing sky. Build a
-  // failsafe consensus for the current slot: use the current hour's Open-Meteo
-  // hourly forecast as a sanity check on the instantaneous `current` object,
-  // then take the cloudier of NWS and Open-Meteo as the effective cloud cover.
-  // Active precipitation / fog codes are always preserved so rain is never
-  // smoothed away. Temperature stays on cur.temperature_2m (Open-Meteo).
+  // The top "Current" condition MUST agree with the 5-day forecast's "Today"
+  // entry. Experience showed that a separate instantaneous Open-Meteo
+  // `current.weather_code` snapshot could disagree with the same model's own
+  // daily daytime summary, producing a current condition that said "Clear"
+  // while Today said clouds (or vice-versa). Compute the Today condition once
+  // and use it for both the top "Now" and the first daily row.
+  const todayNwsCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[TODAY_IDX]);
+  const todayDayCode = daytimeWeatherCode(hourly, daily.time[TODAY_IDX]);
+  const todayInfo = resolveCondition(
+    todayDayCode != null ? todayDayCode : daily.weather_code[TODAY_IDX],
+    true,
+    todayNwsCC,
+    null
+  );
+
+  // Hourly/minutely strip still needs a per-slot consensus resolver below.
   const _skyCoverNow = skyCoverAt(skyCoverIntervals, new Date());
   const currentHourIdx = findCurrentHourlyIndex(hourly, new Date());
   const currentHourCode = currentHourIdx >= 0 ? hourly.weather_code[currentHourIdx] : cur.weather_code;
   const currentHourCC = currentHourIdx >= 0 ? hourly.cloud_cover[currentHourIdx] : cur.cloud_cover;
-  const liveCloudCover = effectiveCloudCover(_skyCoverNow, currentHourCC);
-  let info = resolveCondition(currentHourCode, isDay, _skyCoverNow, currentHourCC, cur.precipitation);
-  let displayKey = FORCED_SCENE || info.key;
+
+  let info = todayInfo;
+  let displayKey = FORCED_SCENE || todayInfo.key;
 
   // Forced scene (e.g. ?scene=flash-flood) should display that scene's label,
   // not the current real-world weather label.
@@ -1375,13 +1385,12 @@ function render(data, fx) {
     `H:${Math.round(daily.temperature_2m_max[TODAY_IDX])}°  L:${Math.round(daily.temperature_2m_min[TODAY_IDX])}°`;
 
   lastDisplayKey = displayKey;
-  lastLiveCloudCover = liveCloudCover;
+  // The top "Current" condition is now intentionally the same as 5-day Today.
+  // Do NOT override the atmosphere cloud cover with a separate live estimate,
+  // because that would make the CGI disagree with the condition label/icon.
+  // setCondition() already loads the matching KEY_TABLE parameters.
+  lastLiveCloudCover = null;
   if (fx) fx.setCondition(displayKey);
-  // Drive the atmospheric cloud density from the measured cloud-cover percent
-  // so the CGI matches the actual live condition, not just the WMO category.
-  if (fx && liveCloudCover != null) {
-    fx.setWeatherData({ cloudCover: liveCloudCover / 100 });
-  }
 
   // 15-minute forecast strip: current slot + next 11 (covers ~3 hours ahead)
   // Falls back to hourly data if minutely_15 is unavailable.
@@ -1395,15 +1404,23 @@ function render(data, fx) {
   for (let i = 0; i < 12; i++) {
     const idx = startIdx + i;
     if (idx >= stripData.time.length) break;
-    const hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
-    const hCC = stripData.cloud_cover ? stripData.cloud_cover[idx] : null;
-    const hPrecip = stripData.precipitation ? stripData.precipitation[idx] : null;
-    // Failsafe consensus: use the cloudier of NWS gridpoint forecast and
-    // Open-Meteo's cloud_cover, while preserving Open-Meteo's precipitation/fog
-    // codes. This prevents either source alone from smoothing away real clouds
-    // or a real rain event.
-    const nwsCC = skyCoverAt(skyCoverIntervals, zonedTimeToUtc(stripData.time[idx], TZ));
-    const hi = resolveCondition(stripData.weather_code[idx], hIsDay, nwsCC, hCC, hPrecip);
+    // The "NOW" slot must show the exact same condition as the top current
+    // condition (which is locked to the 5-day "Today" condition). Later slots
+    // use the per-slot consensus so the strip still evolves through the day.
+    let hi;
+    if (i === 0) {
+      hi = todayInfo;
+    } else {
+      const hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
+      const hCC = stripData.cloud_cover ? stripData.cloud_cover[idx] : null;
+      const hPrecip = stripData.precipitation ? stripData.precipitation[idx] : null;
+      // Failsafe consensus: use the cloudier of NWS gridpoint forecast and
+      // Open-Meteo's cloud_cover, while preserving Open-Meteo's precipitation/fog
+      // codes. This prevents either source alone from smoothing away real clouds
+      // or a real rain event.
+      const nwsCC = skyCoverAt(skyCoverIntervals, zonedTimeToUtc(stripData.time[idx], TZ));
+      hi = resolveCondition(stripData.weather_code[idx], hIsDay, nwsCC, hCC, hPrecip);
+    }
     const pop = stripData.precipitation_probability ? stripData.precipitation_probability[idx] : null;
     const el = document.createElement('div');
     el.className = 'ww-hour';
@@ -1424,17 +1441,24 @@ function render(data, fx) {
   const span = Math.max(1, globalMax - globalMin);
   for (let i = 0; i < 5; i++) {
     const idx = TODAY_IDX + i;
-    // Same reasoning as the hourly strip: use the NWS gridpoint forecast's
-    // average daytime (9am-6pm) sky cover for this address's exact grid cell
-    // instead of Open-Meteo's own daily aggregate, which tends to report a
-    // worst-case/overcast day even when it's actually clear-to-partly-cloudy
-    // for most of the daylight hours (classic Bay Area marine-layer pattern).
-    const nwsDayCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[idx]);
-    // Prefer the daytime-hours-derived code (see daytimeWeatherCode above)
-    // over Open-Meteo's whole-day aggregate; only fall back to the daily
-    // aggregate if the hourly series doesn't cover that date for some reason.
-    const dayCode = daytimeWeatherCode(hourly, daily.time[idx]);
-    const di = wmoInfo(dayCode != null ? dayCode : daily.weather_code[idx], true, nwsDayCC);
+    // Reuse the already-computed Today condition for the first row so the top
+    // "Current" condition and 5-day "Today" row are pixel-for-pixel identical.
+    let di;
+    if (i === 0) {
+      di = todayInfo;
+    } else {
+      // Same reasoning as the hourly strip: use the NWS gridpoint forecast's
+      // average daytime (9am-6pm) sky cover for this address's exact grid cell
+      // instead of Open-Meteo's own daily aggregate, which tends to report a
+      // worst-case/overcast day even when it's actually clear-to-partly-cloudy
+      // for most of the daylight hours (classic Bay Area marine-layer pattern).
+      const nwsDayCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[idx]);
+      // Prefer the daytime-hours-derived code (see daytimeWeatherCode above)
+      // over Open-Meteo's whole-day aggregate; only fall back to the daily
+      // aggregate if the hourly series doesn't cover that date for some reason.
+      const dayCode = daytimeWeatherCode(hourly, daily.time[idx]);
+      di = wmoInfo(dayCode != null ? dayCode : daily.weather_code[idx], true, nwsDayCC);
+    }
     const lo = daily.temperature_2m_min[idx], hi = daily.temperature_2m_max[idx];
     const left = ((lo - globalMin) / span) * 100;
     const width = ((hi - lo) / span) * 100;

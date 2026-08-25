@@ -29,10 +29,11 @@ const WMO_ATMOSPHERE_TABLE = {
   // Group 0: clear
   0:  { cloudCover: 0.00, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0 },
 
-  // Group 1-3: cloud cover
-  1:  { cloudCover: 0.22, precipitation: 0,   windSpeed: 3,  visibility: 35, thunder: 0 },
-  2:  { cloudCover: 0.35, precipitation: 0,   windSpeed: 4,  visibility: 30, thunder: 0 },
-  3:  { cloudCover: 0.92, precipitation: 0,   windSpeed: 5,  visibility: 18, thunder: 0 },
+  // Group 1-3: cloud cover (overcast is deliberately the ceiling; do not let
+  // partly/mostly cloudy float into overcast territory).
+  1:  { cloudCover: 0.20, precipitation: 0,   windSpeed: 3,  visibility: 35, thunder: 0 },
+  2:  { cloudCover: 0.40, precipitation: 0,   windSpeed: 4,  visibility: 30, thunder: 0 },
+  3:  { cloudCover: 0.96, precipitation: 0,   windSpeed: 5,  visibility: 18, thunder: 0 },
 
   // Group 45/48: fog / rime fog
   45: { cloudCover: 0.75, precipitation: 0,   windSpeed: 1,  visibility: 0.6, thunder: 0 },
@@ -93,11 +94,14 @@ const KEY_TABLE = {
   // shows plenty of stars at night), with no star-like overlay by day.
   'mostly-clear-day':   { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.15, windSpeed: 3 },
   'mostly-clear-night': { ...WMO_ATMOSPHERE_TABLE[1], overlay: 'clear-night', cloudCover: 0.10, windSpeed: 2 },
-  'partly-cloudy-day':  WMO_ATMOSPHERE_TABLE[2],
-  'partly-cloudy-night':WMO_ATMOSPHERE_TABLE[2],
-  'mostly-cloudy-day':  { ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },
-  'mostly-cloudy-night':{ ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.78 },
-  'overcast':           WMO_ATMOSPHERE_TABLE[3],
+  'partly-cloudy-day':  { ...WMO_ATMOSPHERE_TABLE[2], cloudCover: 0.40 },
+  'partly-cloudy-night':{ ...WMO_ATMOSPHERE_TABLE[2], cloudCover: 0.40 },
+  // Mostly cloudy should be materially cloudier than partly cloudy but still
+  // well short of overcast; otherwise the CGI reads as solid gray overcast.
+  'mostly-cloudy-day':  { ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.62 },
+  'mostly-cloudy-night':{ ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.62 },
+  // Overcast must be the ceiling -- solid, gray, near-total cloud cover.
+  'overcast':           { ...WMO_ATMOSPHERE_TABLE[3], cloudCover: 0.96 },
   'fog':                { ...WMO_ATMOSPHERE_TABLE[45], overlay: 'fog-bank' },
   'drizzle-light':      WMO_ATMOSPHERE_TABLE[51],
   'drizzle':            WMO_ATMOSPHERE_TABLE[53],
