@@ -21,7 +21,7 @@ html, body {
   --border: rgba(15,23,42,0.12);
   --accent: #0f172a;
   --hi: #1e293b;
-  --lo: #94a3b8;
+  --lo: #334155;
   --track: rgba(15,23,42,0.08);
   --good: #16a34a;
   --warn: #d97706;
@@ -52,7 +52,7 @@ html, body {
   --border: rgba(245,158,11,0.18);
   --accent: #f59e0b;
   --hi: #fef3c7;
-  --lo: #b45309;
+  --lo: #fbbf24;
   --track: rgba(245,158,11,0.14);
   --good: #f59e0b;
   --warn: #f59e0b;
@@ -148,8 +148,8 @@ html, body {
 .ww-day-row .dn { font-size: 17px; font-weight: 800; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ww-day-row svg, .ww-day-row .weather-icon { width: 34px !important; height: 34px !important; flex-shrink: 0; }
 .ww-day-row .dp { font-size: 14px; font-weight: 800; color: var(--rain); text-align: right; }
-.ww-day-row .dlo { font-size: 16px; font-weight: 700; color: var(--lo); text-align: right; }
-.ww-day-row .dhi { font-size: 16px; font-weight: 800; color: var(--hi); text-align: right; }
+.ww-day-row .dlo { font-size: 16px; font-weight: 700; color: var(--lo); text-align: right; text-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+.ww-day-row .dhi { font-size: 16px; font-weight: 800; color: var(--hi); text-align: right; text-shadow: 0 1px 2px rgba(0,0,0,0.18); }
 .ww-bar { height: 4px; border-radius: 2px; background: var(--track); position: relative; overflow: hidden; }
 .ww-bar span { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: linear-gradient(90deg, #60a5fa, #f59e0b, #ef4444); opacity: .9; }
 
