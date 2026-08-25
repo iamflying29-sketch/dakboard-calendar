@@ -125,6 +125,81 @@ function zonedTimeToUtc(naiveStr, timeZone) {
   return new Date(asUtc.getTime() + offsetMs);
 }
 
+// ---------- Failsafe condition resolution (clear/cloudy/precip) ----------
+// The top "Current" condition and hourly strip must never say "Clear" when
+// there are actual clouds overhead. Open-Meteo's instantaneous
+// `current.weather_code` / `current.cloud_cover` can lag or miss the local
+// marine-layer pattern, and the NWS gridpoint forecast can occasionally miss
+// a rapidly-changing sky. The safest, most accurate choice is a CONSENSUS:
+// take the maximum of the two independent cloud-cover estimates (NWS + OM) and
+// derive the condition from that. Active precipitation/fog codes are always
+// preserved so a rain shower is never mislabeled as "Cloudy" just because the
+// sky cover happens to be high.
+function isPrecipitationOrFogCode(code) {
+  return code === 45 || code === 48 || (code >= 50 && code <= 99);
+}
+
+function cloudCoverToCondition(skyCover, isDay) {
+  const day = !!isDay;
+  const t = Math.max(0, Math.min(100, Number(skyCover) || 0));
+  if (t <= 15) return { key: day ? 'clear-day' : 'clear-night', label: 'Clear' };
+  if (t <= 40) return { key: day ? 'mostly-clear-day' : 'mostly-clear-night', label: 'Mostly Clear' };
+  if (t <= 70) return { key: day ? 'partly-cloudy-day' : 'partly-cloudy-night', label: 'Partly Cloudy' };
+  if (t <= 95) return { key: day ? 'mostly-cloudy-day' : 'mostly-cloudy-night', label: 'Mostly Cloudy' };
+  return { key: 'overcast', label: 'Overcast' };
+}
+
+function effectiveCloudCover(nwsSkyCover, omCloudCover) {
+  const nws = nwsSkyCover != null ? Number(nwsSkyCover) : null;
+  const om = omCloudCover != null ? Number(omCloudCover) : null;
+  if (nws != null && om != null) return Math.max(nws, om);
+  if (nws != null) return nws;
+  if (om != null) return om;
+  return null;
+}
+
+function formatInTimeZone(date, timeZone) {
+  // Returns a Pacific-local wall-clock string "YYYY-MM-DDTHH:mm:ss" for the
+  // given UTC Date, independent of the device's own timezone setting.
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const get = (type) => ((parts.find(p => p.type === type) || {}).value || '0').padStart(2, '0');
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
+function findCurrentHourlyIndex(hourly, date) {
+  if (!hourly || !Array.isArray(hourly.time)) return -1;
+  // Match the "YYYY-MM-DDTHH" prefix against Open-Meteo's own naive local-time strings.
+  const prefix = formatInTimeZone(date, TZ).slice(0, 13);
+  return hourly.time.findIndex(t => String(t).slice(0, 13) === prefix);
+}
+
+function resolveCondition(code, isDay, nwsSkyCover, omCloudCover, precipitation) {
+  // Preserve meaningful non-cloud conditions (fog, drizzle, rain, snow, storms).
+  if (isPrecipitationOrFogCode(code)) {
+    return wmoInfo(code, isDay);
+  }
+  // If Open-Meteo reports actual precipitation but the weather code somehow
+  // did not, force a rain label so the widget never hides active rain.
+  if (precipitation != null && precipitation > 0) {
+    return precipitation <= 0.02
+      ? { key: 'rain-light', label: 'Light Rain' }
+      : precipitation <= 0.10
+        ? { key: 'rain', label: 'Rain' }
+        : { key: 'rain-heavy', label: 'Heavy Rain' };
+  }
+  // Consensus cloud cover: trust the cloudier of the two sources so a
+  // genuinely cloudy sky is never smoothed away by one stale estimate.
+  const cc = effectiveCloudCover(nwsSkyCover, omCloudCover);
+  if (cc != null) {
+    return cloudCoverToCondition(cc, isDay);
+  }
+  // No cloud-cover data at all -- fall back to the raw WMO code.
+  return wmoInfo(code, isDay);
+}
+
 function applySkyForNow(daily) {
   const now = new Date();
   const todaySunrise = zonedTimeToUtc(daily.sunrise[TODAY_IDX], TZ);
@@ -214,8 +289,8 @@ async function fetchWeather() {
   const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
   const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation` +
-    `&minutely_15=temperature_2m,weather_code,precipitation_probability,is_day,cloud_cover` +
-    `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day,cloud_cover` +
+    `&minutely_15=temperature_2m,weather_code,precipitation,precipitation_probability,is_day,cloud_cover` +
+    `&hourly=temperature_2m,weather_code,precipitation,precipitation_probability,visibility,is_day,cloud_cover` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
     `&timezone=${encodeURIComponent(TZ)}&forecast_days=7&past_days=1`;
@@ -1238,17 +1313,20 @@ function render(data, fx) {
   if (fx) fx.setSunState(sunState.frac, sunState.elevation);
 
   const isDay = !!cur.is_day;
-  // Prefer the NWS gridpoint forecast (specific to this exact address's grid
-  // cell, quality-controlled by local forecasters) over Open-Meteo's
-  // model-nowcast cloud_cover for the CURRENT condition -- the model can lag
-  // or simply disagree with what the sky is actually doing right now (e.g.
-  // reporting 100% overcast on an actually-clear night). wmoInfo() only uses
-  // this value for clear/cloud WMO codes (0-3), so it has no effect when
-  // Open-Meteo itself is already reporting active precipitation. Temperature
-  // stays on cur.temperature_2m (Open-Meteo) regardless.
+  // The single Open-Meteo "current" snapshot (weather_code + cloud_cover) can
+  // be stale or too smooth for this coastal microclimate, while the NWS
+  // gridpoint forecast can occasionally miss a rapidly changing sky. Build a
+  // failsafe consensus for the current slot: use the current hour's Open-Meteo
+  // hourly forecast as a sanity check on the instantaneous `current` object,
+  // then take the cloudier of NWS and Open-Meteo as the effective cloud cover.
+  // Active precipitation / fog codes are always preserved so rain is never
+  // smoothed away. Temperature stays on cur.temperature_2m (Open-Meteo).
   const _skyCoverNow = skyCoverAt(skyCoverIntervals, new Date());
-  const liveCloudCover = _skyCoverNow != null ? _skyCoverNow : cur.cloud_cover;
-  let info = wmoInfo(cur.weather_code, isDay, liveCloudCover);
+  const currentHourIdx = findCurrentHourlyIndex(hourly, new Date());
+  const currentHourCode = currentHourIdx >= 0 ? hourly.weather_code[currentHourIdx] : cur.weather_code;
+  const currentHourCC = currentHourIdx >= 0 ? hourly.cloud_cover[currentHourIdx] : cur.cloud_cover;
+  const liveCloudCover = effectiveCloudCover(_skyCoverNow, currentHourCC);
+  let info = resolveCondition(currentHourCode, isDay, _skyCoverNow, currentHourCC, cur.precipitation);
   let displayKey = FORCED_SCENE || info.key;
 
   // Forced scene (e.g. ?scene=flash-flood) should display that scene's label,
@@ -1319,13 +1397,13 @@ function render(data, fx) {
     if (idx >= stripData.time.length) break;
     const hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
     const hCC = stripData.cloud_cover ? stripData.cloud_cover[idx] : null;
-    // Use the NWS gridpoint forecast (specific to this address's exact grid
-    // cell) for the displayed cloud condition instead of Open-Meteo's own
-    // cloud_cover, which has been observed forecasting a flat 100% overcast
-    // for this location regardless of actual conditions. weather_code (for
-    // rain/snow/storm detection) still comes from Open-Meteo as before.
+    const hPrecip = stripData.precipitation ? stripData.precipitation[idx] : null;
+    // Failsafe consensus: use the cloudier of NWS gridpoint forecast and
+    // Open-Meteo's cloud_cover, while preserving Open-Meteo's precipitation/fog
+    // codes. This prevents either source alone from smoothing away real clouds
+    // or a real rain event.
     const nwsCC = skyCoverAt(skyCoverIntervals, zonedTimeToUtc(stripData.time[idx], TZ));
-    const hi = wmoInfo(stripData.weather_code[idx], hIsDay, nwsCC != null ? nwsCC : hCC);
+    const hi = resolveCondition(stripData.weather_code[idx], hIsDay, nwsCC, hCC, hPrecip);
     const pop = stripData.precipitation_probability ? stripData.precipitation_probability[idx] : null;
     const el = document.createElement('div');
     el.className = 'ww-hour';
