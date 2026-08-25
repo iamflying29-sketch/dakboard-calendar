@@ -81,13 +81,17 @@ const WMO_ATMOSPHERE_TABLE = {
 // Internal key mapping (matches weather-icons.js keys) -> WMO-ish parameters.
 // ---------------------------------------------------------------------------
 const KEY_TABLE = {
-  'clear-day':          { ...WMO_ATMOSPHERE_TABLE[0], overlay: 'clear-day', cloudCover: 0.03, windSpeed: 3 },
+  // No Canvas overlay in daylight: the old "clear-day" sparkle particles were
+  // small twinkling white dots that, on a bright blue sky, read as stars
+  // showing during the day -- physically wrong (stars are never visible
+  // against a lit daytime sky) and explicitly called out as a bug. The
+  // WebGL sun/sky already fully conveys "clear day" with no overlay needed.
+  'clear-day':          { ...WMO_ATMOSPHERE_TABLE[0], cloudCover: 0.03, windSpeed: 3 },
   'clear-night':        { ...WMO_ATMOSPHERE_TABLE[0], overlay: 'clear-night', cloudCover: 0.0, windSpeed: 2 },
-  // "Mostly clear" should still feel clear -- reuse the clear-day/night
-  // sparkle/star overlays (a sky that's 85-90% clear still shows plenty of
-  // stars at night / sun glints by day), just with a touch of cloud in the
-  // WebGL sky itself so it's not identical to fully clear.
-  'mostly-clear-day':   { ...WMO_ATMOSPHERE_TABLE[1], overlay: 'clear-day', cloudCover: 0.15, windSpeed: 3 },
+  // "Mostly clear" should still feel clear -- reuse the clear-night sparkle
+  // overlay only for the night variant (a sky that's 85-90% clear still
+  // shows plenty of stars at night), with no star-like overlay by day.
+  'mostly-clear-day':   { ...WMO_ATMOSPHERE_TABLE[1], cloudCover: 0.15, windSpeed: 3 },
   'mostly-clear-night': { ...WMO_ATMOSPHERE_TABLE[1], overlay: 'clear-night', cloudCover: 0.10, windSpeed: 2 },
   'partly-cloudy-day':  WMO_ATMOSPHERE_TABLE[2],
   'partly-cloudy-night':WMO_ATMOSPHERE_TABLE[2],
@@ -150,6 +154,14 @@ const EXTREME_TABLE = {
   // Astronomical / rare sky events
   'aurora':         { cloudCover: 0.20, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'aurora', label: 'Aurora' },
   'eclipse':        { cloudCover: 0.10, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'eclipse', label: 'Solar Eclipse' },
+  // Lunar eclipses only ever happen at night (the Moon must be opposite the
+  // Sun), so these always render against the real nighttime WebGL sky/stars
+  // -- 'eclipse-lunar' is the partial/penumbral dimming phase (grey, still
+  // mostly lit), 'blood-moon' is the totality/deep-umbral phase where the
+  // Moon actually turns red-orange. Both are driven by real eclipse contact
+  // times in weather.js (chooseAstroCondition), not decorative-only.
+  'eclipse-lunar':  { cloudCover: 0.05, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'eclipse-lunar', label: 'Lunar Eclipse' },
+  'blood-moon':     { cloudCover: 0.05, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'blood-moon', label: 'Blood Moon' },
   'rainbow':        { cloudCover: 0.30, precipitation: 0,   windSpeed: 4,  visibility: 35, thunder: 0, convection: 0, overlay: 'rainbow', label: 'Rainbow' },
   'meteor-shower':  { cloudCover: 0.15, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'meteors', label: 'Meteor Shower' },
   'meteor-impact':  { cloudCover: 0.25, precipitation: 0,   windSpeed: 6,  visibility: 30, thunder: 0.6, convection: 0, overlay: 'meteor-impact', label: 'Meteor Impact' },
@@ -284,6 +296,8 @@ class WeatherOverlay {
     else if (this.effect === 'ice') this._drawIce(ctx, w, h);
     else if (this.effect === 'aurora') this._drawAurora(ctx, w, h);
     else if (this.effect === 'eclipse') this._drawEclipse(ctx, w, h);
+    else if (this.effect === 'eclipse-lunar') this._drawLunarEclipse(ctx, w, h);
+    else if (this.effect === 'blood-moon') this._drawBloodMoon(ctx, w, h);
     else if (this.effect === 'rainbow') this._drawRainbow(ctx, w, h);
     else if (this.effect === 'meteors') this._drawMeteors(ctx, w, h);
     else if (this.effect === 'meteor-impact') this._drawMeteorImpact(ctx, w, h);
@@ -479,6 +493,63 @@ class WeatherOverlay {
     ctx.fillStyle = 'rgba(10,10,12,0.85)';
     ctx.beginPath();
     ctx.arc(cx + r * 0.15, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Partial/penumbral lunar eclipse: the Moon is still mostly its normal
+  // grey-white color, with a soft dark umbral "bite" advancing across one
+  // limb -- distinct from the totality/blood-moon look below, and from the
+  // solar eclipse's corona-and-black-disc look above (a lunar eclipse never
+  // produces a corona; sunlight just dims and the Moon's own disc stays
+  // visible throughout).
+  _drawLunarEclipse(ctx, w, h) {
+    const cx = w * 0.5, cy = h * 0.28, r = Math.min(w, h) * 0.11;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.8, cx, cy, r * 2.2);
+    glow.addColorStop(0, 'rgba(226,232,240,0.35)');
+    glow.addColorStop(1, 'rgba(226,232,240,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 2.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8edf4';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    // Advancing umbral shadow: a darker grey disc offset onto one limb,
+    // sized/positioned to always leave most of the Moon's face lit --
+    // that partial coverage is exactly what makes this read as "eclipse in
+    // progress" rather than "new moon" or "full moon".
+    const shadowT = 0.5 + 0.5 * Math.sin(this.t * 0.01);
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = '#1e293b';
+    ctx.beginPath();
+    ctx.arc(cx + r * (0.55 + 0.25 * shadowT), cy - r * 0.1, r * 1.05, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Totality / deep-umbral "blood moon": the Moon's disc itself is rendered
+  // in saturated red/copper tones (real sunlight refracted through Earth's
+  // atmosphere, same reason sunsets are red) with a matching red halo --
+  // this is the visually dramatic phase the "blood moon" name refers to.
+  _drawBloodMoon(ctx, w, h) {
+    const cx = w * 0.5, cy = h * 0.28, r = Math.min(w, h) * 0.11;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, r * 2.6);
+    halo.addColorStop(0, 'rgba(220,38,38,0.30)');
+    halo.addColorStop(1, 'rgba(220,38,38,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 2.6, 0, Math.PI * 2); ctx.fill();
+    const disc = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    disc.addColorStop(0, '#c2410c');
+    disc.addColorStop(0.55, '#9a3412');
+    disc.addColorStop(1, '#5c1a0a');
+    ctx.fillStyle = disc;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    // Faint mare-like texture so the disc doesn't read as a flat circle
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#7c2d12';
+    ctx.beginPath(); ctx.arc(cx - r * 0.25, cy - r * 0.15, r * 0.28, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.3, cy + r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 

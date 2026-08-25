@@ -78,10 +78,33 @@ function skyColorsFor(elevation) {
 // TODAY_IDX = today, TODAY_IDX+1 = tomorrow, etc.
 const TODAY_IDX = 1;
 
+// Open-Meteo, when queried with &timezone=America/Los_Angeles, returns
+// "naive" local wall-clock strings with NO UTC offset attached (e.g.
+// "2026-08-24T14:00"). `new Date(str)` parses a string like that as if it
+// were expressed in the JS runtime's OWN system timezone -- which is silently
+// wrong unless whatever device/browser is executing this code *also* happens
+// to have its system clock set to Pacific time. We can never guarantee that
+// for an embedded DAKboard WebView (and headless test browsers used during
+// development default to UTC, which is exactly why this went unnoticed
+// before). Left unfixed, every sunrise/sunset and hourly/daily sky-cover
+// comparison below silently shifts by the device's UTC offset from Pacific
+// (7-8 hours) -- e.g. sampling actual early-morning sky cover while labeling
+// it as midday, which is precisely the "looks like early morning" /
+// "wrong location" symptom this was written to fix. This converts a naive
+// "wall clock in `timeZone`" string into the one true UTC instant it
+// represents, independent of the executing runtime's own timezone.
+function zonedTimeToUtc(naiveStr, timeZone) {
+  const asUtc = new Date(naiveStr.endsWith('Z') ? naiveStr : naiveStr + 'Z');
+  const inTz = new Date(asUtc.toLocaleString('en-US', { timeZone }));
+  const inUtc = new Date(asUtc.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const offsetMs = inUtc.getTime() - inTz.getTime();
+  return new Date(asUtc.getTime() + offsetMs);
+}
+
 function applySkyForNow(daily) {
   const now = new Date();
-  const todaySunrise = new Date(daily.sunrise[TODAY_IDX]);
-  const todaySunset = new Date(daily.sunset[TODAY_IDX]);
+  const todaySunrise = zonedTimeToUtc(daily.sunrise[TODAY_IDX], TZ);
+  const todaySunset = zonedTimeToUtc(daily.sunset[TODAY_IDX], TZ);
 
   let state;
   if (now >= todaySunrise && now <= todaySunset) {
@@ -89,12 +112,12 @@ function applySkyForNow(daily) {
     state = { frac, elevation: Math.sin(Math.PI * frac) };
   } else if (now < todaySunrise) {
     // Pre-dawn: still in the night that started at YESTERDAY's sunset.
-    const yesterdaySunset = new Date(daily.sunset[TODAY_IDX - 1]);
+    const yesterdaySunset = zonedTimeToUtc(daily.sunset[TODAY_IDX - 1], TZ);
     const frac = Math.max(0, Math.min(1, (now - yesterdaySunset) / (todaySunrise - yesterdaySunset)));
     state = { frac, elevation: -Math.sin(Math.PI * frac) };
   } else {
     // Post-dusk: night runs until TOMORROW's sunrise.
-    const tomorrowSunrise = daily.sunrise[TODAY_IDX + 1] ? new Date(daily.sunrise[TODAY_IDX + 1])
+    const tomorrowSunrise = daily.sunrise[TODAY_IDX + 1] ? zonedTimeToUtc(daily.sunrise[TODAY_IDX + 1], TZ)
       : new Date(todaySunset.getTime() + 12 * 3600 * 1000);
     const frac = Math.max(0, Math.min(1, (now - todaySunset) / (tomorrowSunrise - todaySunset)));
     state = { frac, elevation: -Math.sin(Math.PI * frac) };
@@ -265,12 +288,52 @@ function avgDaytimeSkyCover(intervals, dateStr) {
   if (!intervals || !intervals.length) return null;
   const samples = [];
   for (let h = 9; h <= 18; h++) {
-    const d = new Date(`${dateStr}T${String(h).padStart(2, '0')}:00:00`);
+    // dateStr + hour is a Pacific-local wall-clock sample ("9am-6pm local");
+    // must be resolved through zonedTimeToUtc (see comment above its
+    // definition), not `new Date(...)`, or this silently samples the wrong
+    // actual hour on any runtime not itself set to Pacific time.
+    const d = zonedTimeToUtc(`${dateStr}T${String(h).padStart(2, '0')}:00:00`, TZ);
     const v = skyCoverAt(intervals, d);
     if (v != null) samples.push(v);
   }
   if (!samples.length) return null;
   return samples.reduce((a, b) => a + b, 0) / samples.length;
+}
+
+// Open-Meteo's own `daily.weather_code` is a single model-chosen aggregate
+// for the ENTIRE calendar day (00:00-23:59), which for this coastal
+// microclimate very often ends up being an early-morning marine-layer fog
+// or overcast code (45/48/3) that has completely burned off by the time
+// anyone is actually looking at the display -- e.g. live-verified on
+// 2026-08-24: daily.weather_code reported "Fog" (45) for today while every
+// single hourly sample from 9am-6pm was actually 0/2 (Clear/Partly Cloudy),
+// and the fog code sits outside the [0,1,2,3] range the NWS sky-cover
+// override already corrects. This derives the single representative
+// condition for the 5-day list from the DAYTIME (9am-6pm Pacific) hourly
+// series instead -- the same hourly array already fetched for the hourly
+// strip -- so an early-morning-only code can never stand in for a day that
+// is clear by the time it matters. Pure string slicing on Open-Meteo's own
+// naive local-time strings (no Date parsing, so this has none of the
+// runtime-timezone ambiguity called out above).
+function daytimeWeatherCode(hourly, dateStr) {
+  if (!hourly || !hourly.time) return null;
+  const counts = new Map();
+  for (let i = 0; i < hourly.time.length; i++) {
+    if (hourly.time[i].slice(0, 10) !== dateStr) continue;
+    const hr = parseInt(hourly.time[i].slice(11, 13), 10);
+    if (hr < 9 || hr > 18) continue;
+    const code = hourly.weather_code[i];
+    counts.set(code, (counts.get(code) || 0) + 1);
+  }
+  if (!counts.size) return null;
+  // Most frequent daytime hour wins; ties broken toward the numerically
+  // higher (= more significant: fog > cloud, rain > fog, storm > rain) code
+  // so a short-lived shower isn't voted away by a majority of clear hours.
+  let best = null;
+  for (const [code, n] of counts) {
+    if (!best || n > best.n || (n === best.n && code > best.code)) best = { code, n };
+  }
+  return best.code;
 }
 
 const NWS_EVENT_MAP = [
@@ -384,6 +447,66 @@ function chooseAlertCondition(alerts, quake, noaaStorms) {
   return null;
 }
 
+// Real lunar eclipse contact times (all UTC, unambiguous -- a lunar eclipse
+// happens at the same instant everywhere on Earth's night side, so no
+// timezone conversion is needed here at all, unlike the Open-Meteo data
+// above). Sourced from NASA/EclipseWise predicted contact tables, cross-
+// checked against Space.com/EarthSky's own writeups -- see the PR/commit
+// history for the exact sources. `penumbral` is the full outer-shadow
+// window (subtle dimming, barely perceptible -- shown as 'eclipse-lunar');
+// `umbral` is the partial/deep-partial window where a visible dark "bite"
+// grows across the Moon (also 'eclipse-lunar'); `total` is totality itself,
+// when the Moon is fully inside the umbra and turns red ('blood-moon'). The
+// Aug 2026 eclipse never reaches technical totality (96% umbral magnitude),
+// but is close enough and dark enough at greatest eclipse to visibly read as
+// a blood moon, so its `umbral` window is tagged `bloodAtMax: true` to show
+// 'blood-moon' only in the deepest part of that window instead of for the
+// entire partial phase.
+//
+// Add future eclipses here as they become confirmed (NASA publishes lunar
+// eclipse predictions decades in advance) -- do not delete past entries,
+// they simply stop matching once their window is in the past.
+const LUNAR_ECLIPSES = [
+  {
+    // Total lunar eclipse, March 3, 2026 -- visible from Western North
+    // America (moon high in the sky before dawn for Tiburon).
+    penumbral: ['2026-03-03T08:44:00Z', '2026-03-03T14:23:00Z'],
+    umbral: ['2026-03-03T09:50:00Z', '2026-03-03T13:17:00Z'],
+    total: ['2026-03-03T11:04:00Z', '2026-03-03T12:03:00Z'],
+  },
+  {
+    // Deep partial lunar eclipse, Aug 27-28, 2026 -- 96% of the Moon's disk
+    // in Earth's umbra at greatest eclipse; visible across the Americas
+    // including the West Coast in the evening sky.
+    penumbral: ['2026-08-28T01:23:00Z', '2026-08-28T07:02:00Z'],
+    umbral: ['2026-08-28T02:33:00Z', '2026-08-28T05:52:00Z'],
+    bloodAtMax: true,
+    maxWindow: ['2026-08-28T03:43:00Z', '2026-08-28T04:43:00Z'],
+  },
+];
+
+function inWindow(now, isoWindow) {
+  return now >= new Date(isoWindow[0]) && now <= new Date(isoWindow[1]);
+}
+
+function chooseAstroCondition(now) {
+  for (const ecl of LUNAR_ECLIPSES) {
+    if (ecl.total && inWindow(now, ecl.total)) {
+      return { key: 'blood-moon', label: 'Blood Moon (Total Lunar Eclipse)', source: 'NASA' };
+    }
+    if (ecl.bloodAtMax && ecl.maxWindow && inWindow(now, ecl.maxWindow)) {
+      return { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'NASA' };
+    }
+    if (ecl.umbral && inWindow(now, ecl.umbral)) {
+      return { key: 'eclipse-lunar', label: 'Partial Lunar Eclipse', source: 'NASA' };
+    }
+    if (ecl.penumbral && inWindow(now, ecl.penumbral)) {
+      return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'NASA' };
+    }
+  }
+  return null;
+}
+
 function render(data, fx) {
   const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals } = data;
   const cur = weather.current;
@@ -420,6 +543,16 @@ function render(data, fx) {
   if (alertInfo) {
     info = { key: alertInfo.key, label: alertInfo.label };
     displayKey = info.key;
+  } else if (!FORCED_SCENE) {
+    // No active hazard alert -- check for a real, currently-in-progress
+    // solar/lunar eclipse (see LUNAR_ECLIPSES above). Astronomical events
+    // are rare and non-hazardous, so they only take over the display when
+    // nothing more urgent (severe weather, earthquake) is happening.
+    const astroInfo = chooseAstroCondition(new Date());
+    if (astroInfo) {
+      info = { key: astroInfo.key, label: astroInfo.label };
+      displayKey = info.key;
+    }
   }
   const vars = {
     theme: THEME,
@@ -464,7 +597,7 @@ function render(data, fx) {
     // cloud_cover, which has been observed forecasting a flat 100% overcast
     // for this location regardless of actual conditions. weather_code (for
     // rain/snow/storm detection) still comes from Open-Meteo as before.
-    const nwsCC = skyCoverAt(skyCoverIntervals, new Date(stripData.time[idx]));
+    const nwsCC = skyCoverAt(skyCoverIntervals, zonedTimeToUtc(stripData.time[idx], TZ));
     const hi = wmoInfo(stripData.weather_code[idx], hIsDay, nwsCC != null ? nwsCC : hCC);
     const pop = stripData.precipitation_probability ? stripData.precipitation_probability[idx] : null;
     const el = document.createElement('div');
@@ -492,7 +625,11 @@ function render(data, fx) {
     // worst-case/overcast day even when it's actually clear-to-partly-cloudy
     // for most of the daylight hours (classic Bay Area marine-layer pattern).
     const nwsDayCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[idx]);
-    const di = wmoInfo(daily.weather_code[idx], true, nwsDayCC);
+    // Prefer the daytime-hours-derived code (see daytimeWeatherCode above)
+    // over Open-Meteo's whole-day aggregate; only fall back to the daily
+    // aggregate if the hourly series doesn't cover that date for some reason.
+    const dayCode = daytimeWeatherCode(hourly, daily.time[idx]);
+    const di = wmoInfo(dayCode != null ? dayCode : daily.weather_code[idx], true, nwsDayCC);
     const lo = daily.temperature_2m_min[idx], hi = daily.temperature_2m_max[idx];
     const left = ((lo - globalMin) / span) * 100;
     const width = ((hi - lo) / span) * 100;
