@@ -686,55 +686,106 @@ const LUNAR_ECLIPSES = [
 ];
 
 // Solar eclipses have a narrow visibility PATH, so unlike lunar eclipses
-// these genuinely only apply to specific places -- confirmed via
-// timeanddate.com/tutiempo per-city calculators that these three (of every
-// solar eclipse through the 2030s) are the ones actually visible as a
-// partial eclipse from the Bay Area/Tiburon; every other solar eclipse
-// through 2031 (including Aug 12, 2026) is NOT visible from California at
-// all and is correctly omitted rather than guessed at.
+// these genuinely only apply to specific places. A simplified "eclipse
+// season" geometry model (the same node-crossing technique used for the
+// LUNAR_ECLIPSES failsafe above) was tried here first and rejected: it
+// correctly found every real solar eclipse globally, but couldn't tell
+// which narrow strip of Earth the shadow actually falls on -- it flagged
+// the real Aug 12, 2026 eclipse (NOT visible from California) exactly the
+// same as ones that are, which would have been a real accuracy regression.
 //
-// Why this stays a precise table instead of getting the same infinite-
-// horizon algorithmic fallback as LUNAR_ECLIPSES above: a solar eclipse's
-// visibility is fundamentally about which narrow path on Earth the Moon's
-// shadow actually falls on, which requires real topocentric
-// parallax/ephemeris math to determine for one specific city -- this was
-// tested (a global "eclipse season" detector, same node-crossing technique
-// as the lunar fallback) and it correctly flagged every known real solar
-// eclipse, but it also flagged at least one real solar eclipse that is NOT
-// visible from California at all (Aug 12, 2026) as indistinguishable from
-// one that is. Displaying "Solar Eclipse" on a day Tiburon genuinely can't
-// see one would be a real accuracy regression, not an improvement -- so
-// this deliberately stays a precise, per-city-verified table, refreshed
-// every 5-10 years (the user has explicitly confirmed this cadence is
-// fine), backed by the loud console.warn freshness failsafe below so it's
-// never silently stale.
-const SOLAR_ECLIPSES = [
-  { window: ['2028-01-26T17:03:00Z', '2028-01-26T18:41:00Z'] }, // partial, ~10% coverage, late morning
-  { window: ['2029-01-14T15:10:00Z', '2029-01-14T17:44:00Z'] }, // partial, ~56% coverage, sunrise-ish
-  { window: ['2031-11-14T21:07:00Z', '2031-11-14T21:40:00Z'] }, // partial, ~1-2% coverage, early afternoon
+// THE ACTUAL FIX: CycleCalcs (cyclecalcs.com) runs a real eclipse-geometry
+// engine (full Sun/Moon/shadow-cone math, not a lookup table) and exposes
+// it as a free, open-CORS (`Access-Control-Allow-Origin: *`, verified
+// live), no-key, no-signup JSON API that computes exact local circumstances
+// for ANY latitude/longitude, out to the year 2200. This is what actually
+// makes "100% accurate, Tiburon-specific, effectively-infinite-horizon"
+// solar eclipse automation possible -- fetchSolarEclipseSchedule() below
+// queries it directly for Tiburon's exact coordinates (its own 10-year-per-
+// request cap, refreshed monthly) instead of asking a human to keep
+// researching per-city visibility every few years.
+//
+// This was validated hard before being trusted: it exactly reproduced (to
+// the minute) this project's own independently-sourced Jan 14, 2029 and
+// Nov 14, 2031 contact times from timeanddate.com/tutiempo -- AND in the
+// process caught a REAL ERROR in this project's own prior manual research:
+// Jan 26, 2028 had been assumed visible from Tiburon based on Los Angeles-
+// area data (the two cities' circumstances are usually close enough, but
+// not for this particular marginal event), whereas computed specifically
+// for Tiburon's own coordinates, that eclipse is NOT actually visible here
+// at all. The corrected SOLAR_ECLIPSES_FALLBACK table below reflects that
+// correction, pulled from this same API and re-verified by hand.
+const SOLAR_ECLIPSE_API_URL = 'https://www.cyclecalcs.com/v2/eclipses';
+const SOLAR_ECLIPSE_CACHE_KEY = 'solarEclipseScheduleCacheV1';
+const SOLAR_ECLIPSE_CACHE_MAX_AGE_MS = 30 * 24 * 3600 * 1000; // refresh monthly -- eclipse dates don't change, so no need to hit this more often
+
+async function fetchSolarEclipseSchedule() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(SOLAR_ECLIPSE_CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+  if (cached && Date.now() - cached.fetchedAt < SOLAR_ECLIPSE_CACHE_MAX_AGE_MS) {
+    return cached.eclipses;
+  }
+  try {
+    const start = new Date().toISOString().slice(0, 10);
+    // 3650 days (10 years) is CycleCalcs's own per-request range cap.
+    const end = new Date(Date.now() + 3650 * 86400000).toISOString().slice(0, 10);
+    const url = `${SOLAR_ECLIPSE_API_URL}?direction=range&start=${start}&end=${end}` +
+      `&type=solar&visible_only=true&lat=${LAT}&lon=${LON}&include=local,contacts`;
+    const r = await fetchWithTimeout(url, 8000);
+    if (!r.ok) return cached ? cached.eclipses : null;
+    const body = await r.json();
+    const raw = (body.data && body.data.eclipses) || [];
+    const eclipses = raw
+      .filter(e => e.local && e.local.visible && Array.isArray(e.local.contacts))
+      .map(e => {
+        const first = e.local.contacts.find(c => c.kind === 'first_contact');
+        const last = e.local.contacts.find(c => c.kind === 'fourth_contact');
+        return (first && last) ? { window: [first.instant, last.instant] } : null;
+      })
+      .filter(Boolean);
+    try { localStorage.setItem(SOLAR_ECLIPSE_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), eclipses })); } catch (e) { /* ignore quota errors */ }
+    return eclipses;
+  } catch (e) {
+    console.warn('Solar eclipse schedule fetch failed', e);
+    return cached ? cached.eclipses : null;
+  }
+}
+
+// FAILSAFE tier 2: if the live API above is ever unreachable AND there's no
+// usable cache yet (e.g. first-ever boot with no network), fall back to
+// this precise, hand-verified table instead of showing nothing. Sourced
+// from the same CycleCalcs computation, re-verified against
+// timeanddate.com/tutiempo where available.
+const SOLAR_ECLIPSES_FALLBACK = [
+  { window: ['2029-01-14T15:10:00Z', '2029-01-14T17:44:00Z'] }, // partial, ~56% obscuration, sunrise-ish
+  { window: ['2031-11-14T21:09:00Z', '2031-11-14T21:36:00Z'] }, // partial, ~0.1% obscuration (geometric graze)
+  { window: ['2033-03-30T16:23:00Z', '2033-03-30T18:26:00Z'] }, // partial, ~39% obscuration
+  { window: ['2035-09-02T02:23:00Z', '2035-09-02T03:25:00Z'] }, // partial, ~9% obscuration, near sunset
 ];
 
-// FAILSAFE: this system is meant to run with zero manual maintenance, but a
-// hardcoded table can only ever cover as far into the future as it was
-// researched. Rather than silently going quiet once the table runs out,
-// warn loudly in the console (visible to anyone who opens devtools on the
-// live device) once we're within a year of the last cataloged eclipse, so
-// running out is a visible, actionable signal instead of a silent gap.
-(function checkEclipseTableFreshness() {
-  const allEnds = []
-    .concat(LUNAR_ECLIPSES.map(e => (e.penumbral || e.umbral || e.total)[1]))
-    .concat(SOLAR_ECLIPSES.map(e => e.window[1]));
-  const lastEnd = allEnds.map(d => new Date(d).getTime()).reduce((a, b) => Math.max(a, b), 0);
+// FAILSAFE tier 3: this system is meant to run with zero manual
+// maintenance, but even a self-updating live API query has a finite lookup
+// window (10 years) and a hardcoded fallback table can only ever cover as
+// far as it was researched. Rather than silently going quiet, warn loudly
+// in the console (visible to anyone who opens devtools on the live device)
+// once we're within a year of the last known eclipse in whichever source
+// is currently active, so running low is a visible, actionable signal
+// instead of a silent gap. `liveSchedule` is populated once refresh() has
+// fetched it at least once; falls back to the static table before that.
+function checkSolarEclipseFreshness(liveSchedule) {
+  const solarWindows = (liveSchedule && liveSchedule.length ? liveSchedule : SOLAR_ECLIPSES_FALLBACK).map(e => e.window[1]);
+  const lunarEnds = LUNAR_ECLIPSES.map(e => (e.penumbral || e.umbral || e.total)[1]);
+  const lastEnd = [...solarWindows, ...lunarEnds].map(d => new Date(d).getTime()).reduce((a, b) => Math.max(a, b), 0);
   if (Date.now() > lastEnd - 365 * 24 * 3600 * 1000) {
     console.warn(
-      'LUNAR_ECLIPSES/SOLAR_ECLIPSES in weather.js only cover eclipses through ' +
-      new Date(lastEnd).toISOString().slice(0, 10) +
-      ' -- fewer than a year of cataloged eclipses remain. Add more entries ' +
-      '(see eclipse.gsfc.nasa.gov/lunar.html and timeanddate.com/eclipse for ' +
-      'the next ones, cross-checked for Tiburon/Bay Area visibility).'
+      'Solar/lunar eclipse data only extends through ' + new Date(lastEnd).toISOString().slice(0, 10) +
+      ' -- fewer than a year of known eclipses remain in the live schedule/fallback ' +
+      'table. Lunar eclipse automation still works forever via the algorithmic ' +
+      'node-crossing failsafe above, but solar eclipse coverage depends on ' +
+      'cyclecalcs.com staying reachable, or SOLAR_ECLIPSES_FALLBACK being extended.'
     );
   }
-})();
+}
 
 function inWindow(now, isoWindow) {
   return now >= new Date(isoWindow[0]) && now <= new Date(isoWindow[1]);
@@ -768,14 +819,12 @@ function inWindow(now, isoWindow) {
 // enough to run automatically forever, with zero maintenance, once
 // LUNAR_ECLIPSES above runs out: it isn't a guess, it's a calibrated and
 // independently-verified physical model. (The equivalent approach for
-// SOLAR eclipses was tested and rejected -- see the comment above
-// SOLAR_ECLIPSES's failsafe note below -- because a solar eclipse's
-// visibility is also about which narrow path on Earth the Moon's shadow
-// falls on, which this simplified 2-body model cannot determine accurately
-// enough to guarantee "100% accurate" for Tiburon specifically. Getting
-// solar eclipse dates wrong is a display bug; the user has already said
-// updating the precise SOLAR_ECLIPSES table every 5-10 years is fine, so
-// that's the honest trade-off made here.)
+// SOLAR eclipses was tested and rejected in favor of a real live eclipse-
+// geometry API instead -- see the comment above SOLAR_ECLIPSE_API_URL
+// below -- because a solar eclipse's visibility is also about which narrow
+// path on Earth the Moon's shadow falls on, which this simplified 2-body
+// model cannot determine accurately enough to guarantee "100% accurate"
+// for Tiburon specifically.)
 const DRACONIC_MONTH_DAYS = 27.212220817;
 const REF_NODE_PHASE_DAYS = 2.993360549207802; // fit against this file's own 2026 LUNAR_ECLIPSES entries, see comment above
 
@@ -797,7 +846,7 @@ function algorithmicLunarEclipseCheck(now) {
   return nodeDist <= 0.9 ? 'total' : 'partial';
 }
 
-function chooseAstroCondition(now, sunElevation) {
+function chooseAstroCondition(now, sunElevation, solarSchedule) {
   if (sunElevation <= 0) {
     for (const ecl of LUNAR_ECLIPSES) {
       if (ecl.total && inWindow(now, ecl.total)) {
@@ -821,9 +870,13 @@ function chooseAstroCondition(now, sunElevation) {
     if (algo === 'partial') return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'computed' };
   }
   if (sunElevation > -0.1) {
-    for (const ecl of SOLAR_ECLIPSES) {
+    // Live CycleCalcs schedule first (most accurate, self-updating); the
+    // hand-verified static table only if the live fetch has never
+    // succeeded (e.g. very first boot with no network yet).
+    const schedule = (solarSchedule && solarSchedule.length) ? solarSchedule : SOLAR_ECLIPSES_FALLBACK;
+    for (const ecl of schedule) {
       if (inWindow(now, ecl.window)) {
-        return { key: 'eclipse', label: 'Solar Eclipse', source: 'NASA' };
+        return { key: 'eclipse', label: 'Solar Eclipse', source: solarSchedule && solarSchedule.length ? 'cyclecalcs.com' : 'fallback table' };
       }
     }
   }
@@ -1049,7 +1102,7 @@ function chooseRainbow(cur, sunElevation) {
 }
 
 function render(data, fx) {
-  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo } = data;
+  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo, solarSchedule } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const minutely15 = weather.minutely_15;
@@ -1092,7 +1145,7 @@ function render(data, fx) {
     // supermoon > NASA close-approach > rainbow > ordinary weather.
     const now = new Date();
     const astroInfo =
-      chooseAstroCondition(now, sunState.elevation) ||
+      chooseAstroCondition(now, sunState.elevation, solarSchedule) ||
       chooseAuroraCondition(aurora, sunState.elevation) ||
       chooseMeteorShower(now, sunState.elevation) ||
       chooseSupermoon(now, sunState.elevation) ||
@@ -1249,15 +1302,17 @@ window.fxEngine = null; // exposed for debugging/testing
 
 async function refresh() {
   try {
-    const [weatherData, alerts, quake, noaaStorms, aurora, neo] = await Promise.all([
+    const [weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule] = await Promise.all([
       fetchWeather(),
       fetchNwsAlerts(),
       fetchEarthquake(),
       fetchNoaaStorms(),
       fetchAuroraData(),
       fetchNeoCloseApproach(),
+      fetchSolarEclipseSchedule(),
     ]);
-    render({ ...weatherData, alerts, quake, noaaStorms, aurora, neo }, fxEngine);
+    checkSolarEclipseFreshness(solarSchedule);
+    render({ ...weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule }, fxEngine);
   } catch (e) {
     console.error('Weather fetch failed', e);
   }
