@@ -23,6 +23,30 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// CRITICAL: plain `fetch()` has NO built-in timeout. If a request to any
+// domain hangs (DNS stall, a firewall silently dropping packets instead of
+// refusing the connection, a slow/overloaded free-tier endpoint, etc.) the
+// returned promise never resolves OR rejects -- it just sits forever. Every
+// data fetch in this file used to go straight into a single
+// `Promise.all([...])` in refresh() that gates the entire render() call, so
+// ONE hung request anywhere (including third-party domains added later,
+// like NOAA SWPC or NASA NeoWs) could silently freeze the whole widget on
+// "Loading…" forever with zero visible error -- this happened for real on
+// the physical device. Every fetch in this file now goes through this
+// helper, which uses AbortController to hard-cancel the request after
+// `ms` (default 8s) so a stuck network call can NEVER block rendering
+// indefinitely again -- it always eventually rejects, which the existing
+// try/catch blocks already convert into a graceful `null`/fallback.
+async function fetchWithTimeout(url, ms = 8000, options) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, Object.assign({}, options, { signal: controller.signal }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---------- Real sun-angle-driven sky color ----------------------------
 // Not a static gradient: interpolates real sky colors based on how far the
 // sun actually is above/below the horizon right now for Tiburon, CA.
@@ -199,8 +223,8 @@ async function fetchWeather() {
     `&current=us_aqi&timezone=${encodeURIComponent(TZ)}`;
 
   const [wRes, aqRes, skyCoverIntervals] = await Promise.all([
-    fetch(wUrl).then(r => r.json()),
-    fetch(aqUrl).then(r => r.json()).catch(() => null),
+    fetchWithTimeout(wUrl).then(r => r.json()),
+    fetchWithTimeout(aqUrl).then(r => r.json()).catch(() => null),
     fetchNwsSkyCover(),
   ]);
   return { weather: wRes, aq: aqRes, skyCoverIntervals };
@@ -279,7 +303,7 @@ function parseNwsIntervals(field) {
 
 async function fetchNwsSkyCover() {
   try {
-    const r = await fetch(NWS_GRIDPOINT_URL);
+    const r = await fetchWithTimeout(NWS_GRIDPOINT_URL);
     if (!r.ok) return null;
     const data = await r.json();
     return parseNwsIntervals(data.properties && data.properties.skyCover);
@@ -409,7 +433,7 @@ function nwsSeverityValue(sev) {
 
 async function fetchNwsAlerts() {
   try {
-    const r = await fetch(NWS_ALERTS_URL);
+    const r = await fetchWithTimeout(NWS_ALERTS_URL);
     if (!r.ok) return [];
     const data = await r.json();
     return Array.isArray(data.features) ? data.features : [];
@@ -422,7 +446,7 @@ async function fetchNwsAlerts() {
 async function fetchEarthquake() {
   try {
     const yesterday = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    const r = await fetch(USGS_QUAKE_URL + encodeURIComponent(yesterday));
+    const r = await fetchWithTimeout(USGS_QUAKE_URL + encodeURIComponent(yesterday));
     if (!r.ok) return null;
     const data = await r.json();
     if (!data.features || !data.features.length) return null;
@@ -450,7 +474,7 @@ function havKm(lat1, lon1, lat2, lon2) {
 
 async function fetchNoaaStorms() {
   try {
-    const r = await fetch(`${NOAA_STORMS_URL}?v=1`);
+    const r = await fetchWithTimeout(`${NOAA_STORMS_URL}?v=1`);
     if (!r.ok) return null;
     return await r.json();
   } catch (e) {
@@ -468,8 +492,8 @@ async function fetchNoaaStorms() {
 async function fetchAuroraData() {
   try {
     const [kpRes, ovRes] = await Promise.all([
-      fetch(SWPC_KP_URL).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(SWPC_OVATION_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchWithTimeout(SWPC_KP_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchWithTimeout(SWPC_OVATION_URL).then(r => r.ok ? r.json() : null).catch(() => null),
     ]);
     let kp = null;
     if (Array.isArray(kpRes) && kpRes.length) {
@@ -511,7 +535,7 @@ async function fetchNeoCloseApproach() {
 
   try {
     const url = `${NASA_NEO_URL}?start_date=${today}&end_date=${today}&api_key=${NASA_API_KEY}`;
-    const r = await fetch(url);
+    const r = await fetchWithTimeout(url);
     if (!r.ok) return cached ? cached.result : null;
     const data = await r.json();
     let hit = null;
