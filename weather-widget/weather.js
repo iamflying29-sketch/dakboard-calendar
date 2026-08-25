@@ -189,7 +189,7 @@ async function fetchWeather() {
   // like Tiburon, avoiding spurious over-water forecast values.
   const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
   const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
-    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m` +
+    `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation` +
     `&minutely_15=temperature_2m,weather_code,precipitation_probability,is_day,cloud_cover` +
     `&hourly=temperature_2m,weather_code,precipitation_probability,visibility,is_day,cloud_cover` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
@@ -215,6 +215,22 @@ let lastLiveCloudCover = null;
 const NWS_ALERTS_URL = `https://api.weather.gov/alerts/active?status=actual&point=${LAT},${LON}`;
 const USGS_QUAKE_URL = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${LAT}&longitude=${LON}&maxradiuskm=200&minmagnitude=4.0&starttime=`;
 const NOAA_STORMS_URL = 'https://noaa-storm-proxy.iamflying29-sketch.deno.net';
+// NOAA Space Weather Prediction Center -- free, no key, CORS-enabled
+// (verified: Access-Control-Allow-Origin: *). Used to auto-detect Aurora
+// visibility (see chooseAuroraCondition below).
+const SWPC_KP_URL = 'https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json';
+const SWPC_OVATION_URL = 'https://services.swpc.noaa.gov/json/ovation_aurora_latest.json';
+// NASA NeoWs (Near Earth Object Web Service) -- free, CORS-enabled, but the
+// public DEMO_KEY is a SHARED rate limit (30 req/hour, 50 req/day) across
+// every DEMO_KEY user on the internet, not just this widget -- disclosed
+// here per the third-party-service checklist in AGENTS.md. This is fetched
+// at most once per real calendar day (see fetchNeoCloseApproach's
+// localStorage cache below), so our own polling never gets anywhere near
+// that budget even in the worst case; a free personal key from
+// https://api.nasa.gov (instant signup, no credit card, raises the limit to
+// 1,000/hour) would be a straightforward upgrade if this is ever expanded.
+const NASA_NEO_URL = 'https://api.nasa.gov/neo/rest/v1/feed';
+const NASA_API_KEY = 'DEMO_KEY';
 
 // ---------------------------------------------------------------------------
 // Weather CONDITION (sky cover / clear vs cloudy) source: NWS gridpoint
@@ -408,6 +424,86 @@ async function fetchNoaaStorms() {
   }
 }
 
+// Real-time Aurora data, resolved specifically to Tiburon's own coordinates
+// (not just "a storm is happening somewhere on Earth"). The OVATION model
+// returns a ~1-degree-resolution worldwide grid of aurora probability; we
+// look up the single grid cell nearest Tiburon's lat/lon, exactly the same
+// way the NWS gridpoint lookup above resolves sky cover to this exact
+// address instead of a generic regional value.
+async function fetchAuroraData() {
+  try {
+    const [kpRes, ovRes] = await Promise.all([
+      fetch(SWPC_KP_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(SWPC_OVATION_URL).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    let kp = null;
+    if (Array.isArray(kpRes) && kpRes.length) {
+      const last = kpRes[kpRes.length - 1];
+      kp = last && last.Kp != null ? Number(last.Kp) : null;
+    }
+    let ovationValue = null;
+    if (ovRes && Array.isArray(ovRes.coordinates)) {
+      // OVATION longitude is 0-360 East; Tiburon's LON is -122.49... (West).
+      const targetLon = (360 + LON) % 360;
+      let best = null;
+      for (const c of ovRes.coordinates) {
+        const dist = Math.abs(c[0] - targetLon) + Math.abs(c[1] - LAT);
+        if (!best || dist < best.dist) best = { val: c[2], dist };
+      }
+      ovationValue = best ? best.val : null;
+    }
+    if (kp == null && ovationValue == null) return null;
+    return { kp, ovationValue };
+  } catch (e) {
+    console.warn('Aurora data fetch failed', e);
+    return null;
+  }
+}
+
+// NASA close-approach data is fundamentally global -- an object's distance
+// from Earth isn't specific to any one city -- so unlike weather or an
+// eclipse's contact times, this can never be made truly "Tiburon-only" in
+// the way the other events above can. Cached once per real calendar day in
+// localStorage (see NASA_NEO_URL's rate-limit note above), and the display
+// itself is still gated to Tiburon's own real nighttime in
+// chooseNeoCondition below -- the closest honest proxy available.
+async function fetchNeoCloseApproach() {
+  const cacheKey = 'neoCloseApproachCacheV1';
+  const today = new Date().toISOString().slice(0, 10);
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (e) { cached = null; }
+  if (cached && cached.date === today) return cached.result;
+
+  try {
+    const url = `${NASA_NEO_URL}?start_date=${today}&end_date=${today}&api_key=${NASA_API_KEY}`;
+    const r = await fetch(url);
+    if (!r.ok) return cached ? cached.result : null;
+    const data = await r.json();
+    let hit = null;
+    const byDate = data.near_earth_objects || {};
+    for (const dateKey of Object.keys(byDate)) {
+      for (const obj of byDate[dateKey]) {
+        const diaM = obj.estimated_diameter && obj.estimated_diameter.meters
+          ? obj.estimated_diameter.meters.estimated_diameter_max : 0;
+        for (const ca of obj.close_approach_data || []) {
+          const distKm = ca.miss_distance ? Number(ca.miss_distance.kilometers) : NaN;
+          // Threshold picked to stay genuinely rare (a handful of
+          // qualifying passes per year per NASA/CNEOS records): at least
+          // 100m across AND passing within one lunar distance (~384,400km).
+          if (diaM >= 100 && distKm && distKm <= 384400) {
+            hit = { name: (obj.name || '').replace(/[()]/g, ''), diameter: Math.round(diaM), distKm: Math.round(distKm) };
+          }
+        }
+      }
+    }
+    try { localStorage.setItem(cacheKey, JSON.stringify({ date: today, result: hit })); } catch (e) { /* ignore quota errors */ }
+    return hit;
+  } catch (e) {
+    console.warn('NASA NEO fetch failed', e);
+    return cached ? cached.result : null;
+  }
+}
+
 function chooseAlertCondition(alerts, quake, noaaStorms) {
   let best = null;
   for (const f of alerts) {
@@ -507,8 +603,138 @@ function chooseAstroCondition(now) {
   return null;
 }
 
+// Real-world calibration: mid-latitude (Tiburon is ~38N geographic, ~40-43N
+// geomagnetic) aurora visibility has historically required G3+ geomagnetic
+// storms (Kp>=7) -- the two confirmed real California sightings in the last
+// decade (the May 2024 "Gannon storm" and the Oct 2024 storm) were both
+// G4/G5 (Kp 8-9). Requiring BOTH the Kp index AND the OVATION model's own
+// probability value at Tiburon's exact coordinates to be elevated is a
+// cross-check between two independent NOAA products, so a glitch/spike in
+// either feed alone can't produce a false "Aurora" display. `sunElevation`
+// uses the same approximate day/night value the sky-color code already
+// computes (see applySkyForNow) -- aurora is never visible against a lit
+// sky regardless of how active the storm is.
+function chooseAuroraCondition(aurora, sunElevation) {
+  if (!aurora || aurora.kp == null || aurora.ovationValue == null) return null;
+  if (sunElevation > -0.15) return null;
+  if (aurora.kp >= 7 && aurora.ovationValue >= 10) {
+    return { key: 'aurora', label: 'Aurora Borealis' };
+  }
+  return null;
+}
+
+// Real meteor-shower radiant positions (RA in decimal hours, Dec in
+// degrees) and 2026 peak windows, sourced from the American Meteor
+// Society's 2026 shower table and the IMO 2026 Meteor Shower Calendar.
+// Only the reliable Northern-Hemisphere-favorable majors are included --
+// the eta Aquariids and Southern delta Aquariids are deliberately omitted
+// because their radiants never climb high enough above Tiburon's horizon
+// before dawn to be a genuine "visible from Tiburon" event.
+// `skyDarkOk: false` marks a shower whose 2026 peak is washed out by
+// moonlight per IMO (the Quadrantids peak at Full Moon in 2026) -- not
+// worth auto-displaying since it would not actually be visible.
+const METEOR_SHOWERS_2026 = [
+  { name: 'Quadrantid', raHours: 15.33, decDeg: 49.7, window: ['2026-01-02T00:00:00Z', '2026-01-04T18:00:00Z'], skyDarkOk: false },
+  { name: 'Lyrid', raHours: 18.13, decDeg: 33.3, window: ['2026-04-21T00:00:00Z', '2026-04-23T18:00:00Z'], skyDarkOk: true },
+  { name: 'Perseid', raHours: 3.28, decDeg: 58.1, window: ['2026-08-11T00:00:00Z', '2026-08-13T18:00:00Z'], skyDarkOk: true },
+  { name: 'Orionid', raHours: 6.42, decDeg: 15.8, window: ['2026-10-20T00:00:00Z', '2026-10-23T18:00:00Z'], skyDarkOk: true },
+  { name: 'Leonid', raHours: 10.27, decDeg: 21.8, window: ['2026-11-16T00:00:00Z', '2026-11-18T18:00:00Z'], skyDarkOk: true },
+  { name: 'Geminid', raHours: 7.55, decDeg: 32.4, window: ['2026-12-12T00:00:00Z', '2026-12-14T18:00:00Z'], skyDarkOk: true },
+  { name: 'Ursid', raHours: 14.63, decDeg: 75.3, window: ['2026-12-21T12:00:00Z', '2026-12-22T23:59:00Z'], skyDarkOk: true },
+];
+
+// Low-precision (but standard, textbook) Greenwich Mean Sidereal Time ->
+// Local Sidereal Time -> radiant altitude conversion. This is real
+// spherical astronomy (not a guess): it answers "is this shower's radiant
+// actually above Tiburon's horizon right now", using Tiburon's own lat/lon,
+// which is exactly what "does this event impact Tiburon" requires for a
+// sky phenomenon whose visibility is inherently about the observer's own
+// horizon, not a value that generic web calendars ever specialize to one
+// city.
+function localSiderealTimeDeg(date, lonDeg) {
+  const JD = date.getTime() / 86400000 + 2440587.5;
+  const D = JD - 2451545.0;
+  const gmst = ((280.46061837 + 360.98564736629 * D) % 360 + 360) % 360;
+  return ((gmst + lonDeg) % 360 + 360) % 360;
+}
+
+function altitudeOfRaDec(raHours, decDeg, date, latDeg, lonDeg) {
+  const lst = localSiderealTimeDeg(date, lonDeg);
+  let ha = lst - raHours * 15;
+  ha = ((ha + 180) % 360 + 360) % 360 - 180;
+  const haR = ha * Math.PI / 180, decR = decDeg * Math.PI / 180, latR = latDeg * Math.PI / 180;
+  const sinAlt = Math.sin(decR) * Math.sin(latR) + Math.cos(decR) * Math.cos(latR) * Math.cos(haR);
+  return Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180 / Math.PI;
+}
+
+function chooseMeteorShower(now, sunElevation) {
+  if (sunElevation > -0.15) return null; // needs real astronomical darkness, same bar as Aurora
+  for (const sh of METEOR_SHOWERS_2026) {
+    if (!sh.skyDarkOk) continue;
+    if (now < new Date(sh.window[0]) || now > new Date(sh.window[1])) continue;
+    if (altitudeOfRaDec(sh.raHours, sh.decDeg, now, LAT, LON) >= 15) {
+      return { key: 'meteor-shower', label: `${sh.name} Meteor Shower` };
+    }
+  }
+  return null;
+}
+
+// Full-supermoon instants for 2026 (Fred Espenak's perigee-full-moon list,
+// cross-checked against EarthSky/BBC Sky at Night/Old Farmer's Almanac). A
+// full moon rises close to sunset and sets close to sunrise by definition
+// (it's on the opposite side of the sky from the Sun), so "is it currently
+// night in Tiburon" is already an honest, astronomically-grounded proxy for
+// "is the supermoon actually up over Tiburon" without needing a full lunar
+// ephemeris.
+const SUPERMOONS_2026 = [
+  { name: 'Wolf Moon', peak: '2026-01-03T10:03:00Z' },
+  { name: 'Beaver Moon', peak: '2026-11-24T14:53:00Z' },
+  { name: 'Cold Moon', peak: '2026-12-24T01:28:00Z' },
+];
+const SUPERMOON_WINDOW_HOURS = 20; // looks essentially full to the eye about a day either side of peak
+
+function chooseSupermoon(now, sunElevation) {
+  if (sunElevation > -0.05) return null;
+  for (const sm of SUPERMOONS_2026) {
+    if (Math.abs(now.getTime() - new Date(sm.peak).getTime()) <= SUPERMOON_WINDOW_HOURS * 3600 * 1000) {
+      return { key: 'supermoon', label: `Supermoon (${sm.name})` };
+    }
+  }
+  return null;
+}
+
+// NASA close-approach data is fundamentally global (an object's distance
+// from Earth isn't specific to any one city), so this is gated to Tiburon's
+// own real nighttime as the closest honest proxy for "relevant to Tiburon"
+// -- see fetchNeoCloseApproach's comment above for the full caveat.
+function chooseNeoCondition(neo, sunElevation) {
+  if (!neo) return null;
+  if (sunElevation > -0.05) return null;
+  return { key: 'close-approach', label: `Close Approach: ${neo.name}` };
+}
+
+// A rainbow requires simultaneous rain (nearby, light enough not to be
+// total overcast) and direct sunlight at a moderate solar angle -- real
+// optics (a rainbow's arc drops below the horizon once the sun is much
+// higher than ~42 degrees, and needs SOME sun getting through, so solid
+// overcast never produces one). `sunElevation` here is the same
+// approximate sin(altitude) proxy used for sky coloring; sin(1deg)=0.017
+// and sin(44deg)=0.695 bound the usable window. `cur` is Open-Meteo's own
+// live current-conditions reading for Tiburon's exact coordinates, so this
+// is inherently Tiburon-specific already.
+function chooseRainbow(cur, sunElevation) {
+  if (!cur || !cur.is_day) return null;
+  if (sunElevation <= 0.02 || sunElevation >= 0.7) return null;
+  const precip = Number(cur.precipitation) || 0;
+  const cloud = cur.cloud_cover != null ? Number(cur.cloud_cover) : null;
+  if (precip > 0 && precip < 4 && cloud != null && cloud < 85) {
+    return { key: 'rainbow', label: 'Rainbow' };
+  }
+  return null;
+}
+
 function render(data, fx) {
-  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals } = data;
+  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const minutely15 = weather.minutely_15;
@@ -544,11 +770,19 @@ function render(data, fx) {
     info = { key: alertInfo.key, label: alertInfo.label };
     displayKey = info.key;
   } else if (!FORCED_SCENE) {
-    // No active hazard alert -- check for a real, currently-in-progress
-    // solar/lunar eclipse (see LUNAR_ECLIPSES above). Astronomical events
-    // are rare and non-hazardous, so they only take over the display when
-    // nothing more urgent (severe weather, earthquake) is happening.
-    const astroInfo = chooseAstroCondition(new Date());
+    // No active hazard alert -- check every automated rare-sky-event source,
+    // most-to-least rare/dramatic, all gated on real data specific to
+    // Tiburon's own coordinates/clock (never a scene the user has to
+    // trigger by hand): lunar eclipse/blood moon > aurora > meteor shower >
+    // supermoon > NASA close-approach > rainbow > ordinary weather.
+    const now = new Date();
+    const astroInfo =
+      chooseAstroCondition(now) ||
+      chooseAuroraCondition(aurora, sunState.elevation) ||
+      chooseMeteorShower(now, sunState.elevation) ||
+      chooseSupermoon(now, sunState.elevation) ||
+      chooseNeoCondition(neo, sunState.elevation) ||
+      chooseRainbow(cur, sunState.elevation);
     if (astroInfo) {
       info = { key: astroInfo.key, label: astroInfo.label };
       displayKey = info.key;
@@ -700,13 +934,15 @@ window.fxEngine = null; // exposed for debugging/testing
 
 async function refresh() {
   try {
-    const [weatherData, alerts, quake, noaaStorms] = await Promise.all([
+    const [weatherData, alerts, quake, noaaStorms, aurora, neo] = await Promise.all([
       fetchWeather(),
       fetchNwsAlerts(),
       fetchEarthquake(),
       fetchNoaaStorms(),
+      fetchAuroraData(),
+      fetchNeoCloseApproach(),
     ]);
-    render({ ...weatherData, alerts, quake, noaaStorms }, fxEngine);
+    render({ ...weatherData, alerts, quake, noaaStorms, aurora, neo }, fxEngine);
   } catch (e) {
     console.error('Weather fetch failed', e);
   }

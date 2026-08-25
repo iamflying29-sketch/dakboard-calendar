@@ -166,6 +166,15 @@ const EXTREME_TABLE = {
   'meteor-shower':  { cloudCover: 0.15, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'meteors', label: 'Meteor Shower' },
   'meteor-impact':  { cloudCover: 0.25, precipitation: 0,   windSpeed: 6,  visibility: 30, thunder: 0.6, convection: 0, overlay: 'meteor-impact', label: 'Meteor Impact' },
   'asteroid-impact':{ cloudCover: 0.60, precipitation: 0,   windSpeed: 20, visibility: 10, thunder: 1.0, convection: 0.5, overlay: 'meteor-impact', label: 'Asteroid Impact' },
+  // A genuine NASA-tracked close PASS -- deliberately NOT the 'meteor-impact'
+  // fireball/shockwave visual (nothing is actually striking anything), just
+  // a small, slow, distant point of light crossing an otherwise normal
+  // night sky, clearly distinguishable from a real meteor streak.
+  'close-approach': { cloudCover: 0.10, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'close-approach', label: 'Asteroid Close Approach' },
+  // A full moon at perigee: brighter/larger disc than a normal full moon,
+  // clear night sky (a supermoon is a real object in the sky, not a
+  // dramatic weather event, so no storm-like parameters).
+  'supermoon':      { cloudCover: 0.05, precipitation: 0,   windSpeed: 2,  visibility: 45, thunder: 0, convection: 0, overlay: 'supermoon', label: 'Supermoon' },
 
   // Geological / natural disaster events
   'earthquake':     { cloudCover: 0.50, precipitation: 0,   windSpeed: 4,  visibility: 20, thunder: 0, convection: 0, overlay: 'earthquake', label: 'Earthquake' },
@@ -298,6 +307,8 @@ class WeatherOverlay {
     else if (this.effect === 'eclipse') this._drawEclipse(ctx, w, h);
     else if (this.effect === 'eclipse-lunar') this._drawLunarEclipse(ctx, w, h);
     else if (this.effect === 'blood-moon') this._drawBloodMoon(ctx, w, h);
+    else if (this.effect === 'supermoon') this._drawSupermoon(ctx, w, h);
+    else if (this.effect === 'close-approach') this._drawCloseApproach(ctx, w, h);
     else if (this.effect === 'rainbow') this._drawRainbow(ctx, w, h);
     else if (this.effect === 'meteors') this._drawMeteors(ctx, w, h);
     else if (this.effect === 'meteor-impact') this._drawMeteorImpact(ctx, w, h);
@@ -550,6 +561,53 @@ class WeatherOverlay {
     ctx.fillStyle = '#7c2d12';
     ctx.beginPath(); ctx.arc(cx - r * 0.25, cy - r * 0.15, r * 0.28, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + r * 0.3, cy + r * 0.3, r * 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // A supermoon is just a brighter, ~14% larger full moon -- NOT a storm or
+  // hazard, so this stays visually calm: a bright white/cream disc with
+  // real lunar mare-like texture and a soft glow, larger than the plain
+  // 'clear-night' moon rendered by the base WebGL sky.
+  _drawSupermoon(ctx, w, h) {
+    const cx = w * 0.5, cy = h * 0.3, r = Math.min(w, h) * 0.16;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 2.4);
+    glow.addColorStop(0, 'rgba(255,250,230,0.45)');
+    glow.addColorStop(1, 'rgba(255,250,230,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 2.4, 0, Math.PI * 2); ctx.fill();
+    const disc = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    disc.addColorStop(0, '#fffdf2');
+    disc.addColorStop(1, '#f3ecd0');
+    ctx.fillStyle = disc;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#c9c0a0';
+    ctx.beginPath(); ctx.arc(cx - r * 0.28, cy - r * 0.2, r * 0.22, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.32, cy + r * 0.15, r * 0.16, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + r * 0.05, cy - r * 0.4, r * 0.12, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // A real NASA-tracked NEO close PASS, not an impact -- a small, slow,
+  // steadily-moving point of reflected light crossing the night sky, with
+  // NO flash/shockwave/fireball (that would misrepresent what's actually
+  // happening, which is just a rock passing at a safe distance). Distinct
+  // from _drawMeteors (fast, bright, brief linear streaks) and from
+  // _drawMeteorImpact (explosive flash + fireball) above.
+  _drawCloseApproach(ctx, w, h) {
+    const cx = w * (0.15 + 0.7 * ((this.t * 0.0025) % 1));
+    const cy = h * (0.15 + 0.1 * Math.sin(this.t * 0.01));
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 5);
+    glow.addColorStop(0, 'rgba(226,232,240,0.9)');
+    glow.addColorStop(1, 'rgba(226,232,240,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.beginPath(); ctx.arc(cx, cy, 1.3, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 
