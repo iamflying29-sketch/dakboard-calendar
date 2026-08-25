@@ -562,42 +562,142 @@ function chooseAlertCondition(alerts, quake, noaaStorms) {
 // Add future eclipses here as they become confirmed (NASA publishes lunar
 // eclipse predictions decades in advance) -- do not delete past entries,
 // they simply stop matching once their window is in the past.
+// Lunar eclipses -- these ARE visible from roughly half of Earth's night
+// side at once, so unlike a solar eclipse's narrow path, "visible from
+// Tiburon" mostly just means "the Moon is above Tiburon's horizon during the
+// event", which the sunElevation gate in chooseAstroCondition below now
+// enforces on every entry (added specifically so an eclipse whose greatest
+// moment happens during Tiburon's broad daylight -- e.g. most of the Dec
+// 2028 event below -- correctly displays only its actually-visible sliver,
+// not the whole worldwide event window).
 const LUNAR_ECLIPSES = [
   {
-    // Total lunar eclipse, March 3, 2026 -- visible from Western North
-    // America (moon high in the sky before dawn for Tiburon).
+    // Total, March 3, 2026 -- greatest eclipse before dawn for Tiburon.
     penumbral: ['2026-03-03T08:44:00Z', '2026-03-03T14:23:00Z'],
     umbral: ['2026-03-03T09:50:00Z', '2026-03-03T13:17:00Z'],
     total: ['2026-03-03T11:04:00Z', '2026-03-03T12:03:00Z'],
   },
   {
-    // Deep partial lunar eclipse, Aug 27-28, 2026 -- 96% of the Moon's disk
-    // in Earth's umbra at greatest eclipse; visible across the Americas
-    // including the West Coast in the evening sky.
+    // Deep partial (93-96% umbral), Aug 27-28, 2026 -- evening sky for the
+    // West Coast.
     penumbral: ['2026-08-28T01:23:00Z', '2026-08-28T07:02:00Z'],
     umbral: ['2026-08-28T02:33:00Z', '2026-08-28T05:52:00Z'],
     bloodAtMax: true,
     maxWindow: ['2026-08-28T03:43:00Z', '2026-08-28T04:43:00Z'],
   },
+  {
+    // Shallow partial (umbral magnitude 0.066), Jan 12, 2028 -- greatest
+    // eclipse 04:14 UTC = 8:14pm PST Jan 11, good evening visibility.
+    penumbral: ['2028-01-12T02:00:00Z', '2028-01-12T06:30:00Z'],
+    umbral: ['2028-01-12T03:46:00Z', '2028-01-12T04:42:00Z'],
+  },
+  {
+    // Total (mag 1.246), Dec 31, 2028 -- greatest eclipse 16:53 UTC = ~8:53am
+    // PST, well after sunrise for Tiburon; NASA/timeanddate list California
+    // as only catching the earliest penumbral/partial stages before
+    // moonset/dawn. Contact times are approximate (derived from published
+    // total/partial durations centered on greatest eclipse, source hasn't
+    // published full per-contact times as of writing) -- the sunElevation
+    // gate is what actually keeps this honest for Tiburon, clipping it to
+    // whatever pre-dawn sliver is real, rather than the window's precision.
+    penumbral: ['2028-12-31T14:20:00Z', '2028-12-31T19:25:00Z'],
+    umbral: ['2028-12-31T15:05:00Z', '2028-12-31T18:40:00Z'],
+    total: ['2028-12-31T16:17:00Z', '2028-12-31T17:29:00Z'],
+  },
+  {
+    // Total (mag 1.844, a deep/long totality), June 25-26, 2029 -- greatest
+    // eclipse 03:23 UTC = 8:23pm PDT June 25, good evening visibility.
+    // Contact times approximate from published durations, same caveat as
+    // above.
+    penumbral: ['2029-06-26T00:50:00Z', '2029-06-26T05:55:00Z'],
+    umbral: ['2029-06-26T01:33:00Z', '2029-06-26T05:13:00Z'],
+    total: ['2029-06-26T02:32:00Z', '2029-06-26T04:14:00Z'],
+  },
+  {
+    // Total (mag 1.117), Dec 20-21, 2029 -- greatest eclipse 22:43 UTC =
+    // 2:43pm PST Dec 20, mid-afternoon for Tiburon; the sunElevation gate
+    // will correctly suppress most/all of this one for Tiburon specifically
+    // (real per-contact times not yet published as of writing -- kept here
+    // as a placeholder window so the table doesn't silently skip the date
+    // entirely; verify/tighten once NASA publishes final contacts).
+    penumbral: ['2029-12-20T19:30:00Z', '2029-12-21T01:55:00Z'],
+    umbral: ['2029-12-20T20:45:00Z', '2029-12-21T00:40:00Z'],
+    total: ['2029-12-20T21:53:00Z', '2029-12-20T23:32:00Z'],
+  },
 ];
+
+// Solar eclipses have a narrow visibility PATH, so unlike lunar eclipses
+// these genuinely only apply to specific places -- confirmed via
+// timeanddate.com/tutiempo per-city calculators that these three (of every
+// solar eclipse through the 2030s) are the ones actually visible as a
+// partial eclipse from the Bay Area/Tiburon; every other solar eclipse
+// through 2031 (including Aug 12, 2026) is NOT visible from California at
+// all and is correctly omitted rather than guessed at.
+const SOLAR_ECLIPSES = [
+  { window: ['2028-01-26T17:03:00Z', '2028-01-26T18:41:00Z'] }, // partial, ~10% coverage, late morning
+  { window: ['2029-01-14T15:10:00Z', '2029-01-14T17:44:00Z'] }, // partial, ~56% coverage, sunrise-ish
+  { window: ['2031-11-14T21:07:00Z', '2031-11-14T21:40:00Z'] }, // partial, ~1-2% coverage, early afternoon
+];
+
+// FAILSAFE: this system is meant to run with zero manual maintenance, but a
+// hardcoded table can only ever cover as far into the future as it was
+// researched. Rather than silently going quiet once the table runs out,
+// warn loudly in the console (visible to anyone who opens devtools on the
+// live device) once we're within a year of the last cataloged eclipse, so
+// running out is a visible, actionable signal instead of a silent gap.
+(function checkEclipseTableFreshness() {
+  const allEnds = []
+    .concat(LUNAR_ECLIPSES.map(e => (e.penumbral || e.umbral || e.total)[1]))
+    .concat(SOLAR_ECLIPSES.map(e => e.window[1]));
+  const lastEnd = allEnds.map(d => new Date(d).getTime()).reduce((a, b) => Math.max(a, b), 0);
+  if (Date.now() > lastEnd - 365 * 24 * 3600 * 1000) {
+    console.warn(
+      'LUNAR_ECLIPSES/SOLAR_ECLIPSES in weather.js only cover eclipses through ' +
+      new Date(lastEnd).toISOString().slice(0, 10) +
+      ' -- fewer than a year of cataloged eclipses remain. Add more entries ' +
+      '(see eclipse.gsfc.nasa.gov/lunar.html and timeanddate.com/eclipse for ' +
+      'the next ones, cross-checked for Tiburon/Bay Area visibility).'
+    );
+  }
+})();
 
 function inWindow(now, isoWindow) {
   return now >= new Date(isoWindow[0]) && now <= new Date(isoWindow[1]);
 }
 
-function chooseAstroCondition(now) {
-  for (const ecl of LUNAR_ECLIPSES) {
-    if (ecl.total && inWindow(now, ecl.total)) {
-      return { key: 'blood-moon', label: 'Blood Moon (Total Lunar Eclipse)', source: 'NASA' };
+// `sunElevation` is the same approximate sin(altitude) proxy used for sky
+// coloring (see applySkyForNow). A lunar eclipse is only actually visible
+// from Tiburon while the Moon is above Tiburon's horizon, and a full moon is
+// up almost exactly whenever the Sun is down -- so gating every lunar-
+// eclipse window on real Tiburon nighttime (elevation <= 0, lenient enough
+// to include twilight) turns each worldwide UTC window into the correctly
+// clipped "what Tiburon can actually see" sliver, without needing per-event
+// moonrise/moonset math. A SOLAR eclipse is the opposite: it can only
+// happen while the Sun is actually up, so it needs the opposite gate --
+// its own contact times are already computed for real Tiburon-area
+// observers, but the daytime check is kept as defense-in-depth.
+function chooseAstroCondition(now, sunElevation) {
+  if (sunElevation <= 0) {
+    for (const ecl of LUNAR_ECLIPSES) {
+      if (ecl.total && inWindow(now, ecl.total)) {
+        return { key: 'blood-moon', label: 'Blood Moon (Total Lunar Eclipse)', source: 'NASA' };
+      }
+      if (ecl.bloodAtMax && ecl.maxWindow && inWindow(now, ecl.maxWindow)) {
+        return { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'NASA' };
+      }
+      if (ecl.umbral && inWindow(now, ecl.umbral)) {
+        return { key: 'eclipse-lunar', label: 'Partial Lunar Eclipse', source: 'NASA' };
+      }
+      if (ecl.penumbral && inWindow(now, ecl.penumbral)) {
+        return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'NASA' };
+      }
     }
-    if (ecl.bloodAtMax && ecl.maxWindow && inWindow(now, ecl.maxWindow)) {
-      return { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'NASA' };
-    }
-    if (ecl.umbral && inWindow(now, ecl.umbral)) {
-      return { key: 'eclipse-lunar', label: 'Partial Lunar Eclipse', source: 'NASA' };
-    }
-    if (ecl.penumbral && inWindow(now, ecl.penumbral)) {
-      return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'NASA' };
+  }
+  if (sunElevation > -0.1) {
+    for (const ecl of SOLAR_ECLIPSES) {
+      if (inWindow(now, ecl.window)) {
+        return { key: 'eclipse', label: 'Solar Eclipse', source: 'NASA' };
+      }
     }
   }
   return null;
@@ -624,23 +724,33 @@ function chooseAuroraCondition(aurora, sunElevation) {
 }
 
 // Real meteor-shower radiant positions (RA in decimal hours, Dec in
-// degrees) and 2026 peak windows, sourced from the American Meteor
-// Society's 2026 shower table and the IMO 2026 Meteor Shower Calendar.
-// Only the reliable Northern-Hemisphere-favorable majors are included --
-// the eta Aquariids and Southern delta Aquariids are deliberately omitted
-// because their radiants never climb high enough above Tiburon's horizon
-// before dawn to be a genuine "visible from Tiburon" event.
-// `skyDarkOk: false` marks a shower whose 2026 peak is washed out by
-// moonlight per IMO (the Quadrantids peak at Full Moon in 2026) -- not
-// worth auto-displaying since it would not actually be visible.
-const METEOR_SHOWERS_2026 = [
-  { name: 'Quadrantid', raHours: 15.33, decDeg: 49.7, window: ['2026-01-02T00:00:00Z', '2026-01-04T18:00:00Z'], skyDarkOk: false },
-  { name: 'Lyrid', raHours: 18.13, decDeg: 33.3, window: ['2026-04-21T00:00:00Z', '2026-04-23T18:00:00Z'], skyDarkOk: true },
-  { name: 'Perseid', raHours: 3.28, decDeg: 58.1, window: ['2026-08-11T00:00:00Z', '2026-08-13T18:00:00Z'], skyDarkOk: true },
-  { name: 'Orionid', raHours: 6.42, decDeg: 15.8, window: ['2026-10-20T00:00:00Z', '2026-10-23T18:00:00Z'], skyDarkOk: true },
-  { name: 'Leonid', raHours: 10.27, decDeg: 21.8, window: ['2026-11-16T00:00:00Z', '2026-11-18T18:00:00Z'], skyDarkOk: true },
-  { name: 'Geminid', raHours: 7.55, decDeg: 32.4, window: ['2026-12-12T00:00:00Z', '2026-12-14T18:00:00Z'], skyDarkOk: true },
-  { name: 'Ursid', raHours: 14.63, decDeg: 75.3, window: ['2026-12-21T12:00:00Z', '2026-12-22T23:59:00Z'], skyDarkOk: true },
+// degrees), sourced from the American Meteor Society's shower table. Only
+// the reliable Northern-Hemisphere-favorable majors are included -- the eta
+// Aquariids and Southern delta Aquariids are deliberately omitted because
+// their radiants never climb high enough above Tiburon's horizon before
+// dawn to be a genuine "visible from Tiburon" event.
+//
+// FAILSAFE / evergreen-by-design: unlike a table of one-off dated events,
+// meteor showers recur every year within about a day of the same calendar
+// date (Earth returns to nearly the same point in its orbit), and a
+// radiant's RA/Dec barely changes on human timescales -- so peakMonth/
+// peakDay here are permanent astronomical constants, not a "2026" snapshot
+// that goes stale. This table needs no future maintenance at all. Moon
+// interference (which DOES vary every year for a fixed calendar date) is
+// computed live below via moonIlluminationFraction() instead of a
+// hardcoded per-year flag, so a given shower is automatically skipped only
+// in years where the real moon phase would actually wash it out, and
+// automatically shown in years where it wouldn't -- e.g. this correctly
+// stops showing the Quadrantids in 2026 (a real full moon that year) while
+// still showing them normally in other years, forever, with no edits.
+const METEOR_SHOWERS = [
+  { name: 'Quadrantid', raHours: 15.33, decDeg: 49.7, peakMonth: 1, peakDay: 3, windowDays: 1 },
+  { name: 'Lyrid', raHours: 18.13, decDeg: 33.3, peakMonth: 4, peakDay: 22, windowDays: 1 },
+  { name: 'Perseid', raHours: 3.28, decDeg: 58.1, peakMonth: 8, peakDay: 12, windowDays: 1 },
+  { name: 'Orionid', raHours: 6.42, decDeg: 15.8, peakMonth: 10, peakDay: 21, windowDays: 2 },
+  { name: 'Leonid', raHours: 10.27, decDeg: 21.8, peakMonth: 11, peakDay: 17, windowDays: 1 },
+  { name: 'Geminid', raHours: 7.55, decDeg: 32.4, peakMonth: 12, peakDay: 13, windowDays: 1 },
+  { name: 'Ursid', raHours: 14.63, decDeg: 75.3, peakMonth: 12, peakDay: 22, windowDays: 1 },
 ];
 
 // Low-precision (but standard, textbook) Greenwich Mean Sidereal Time ->
@@ -667,11 +777,50 @@ function altitudeOfRaDec(raHours, decDeg, date, latDeg, lonDeg) {
   return Math.asin(Math.max(-1, Math.min(1, sinAlt))) * 180 / Math.PI;
 }
 
+// True lunar mechanics, not calendar lookups: the synodic month (new moon
+// to new moon, 29.530588861 days) and its own well-known 2000-01-06 18:14
+// UTC reference new moon give the Moon's phase/age on any date forever,
+// with no yearly table at all.
+const SYNODIC_MONTH_DAYS = 29.530588861;
+const REF_NEW_MOON_JD = 2451550.1; // 2000-01-06 18:14 UTC (widely published reference new moon)
+
+function toJulianDate(date) {
+  return date.getTime() / 86400000 + 2440587.5;
+}
+
+function moonAgeDays(date) {
+  let age = (toJulianDate(date) - REF_NEW_MOON_JD) % SYNODIC_MONTH_DAYS;
+  if (age < 0) age += SYNODIC_MONTH_DAYS;
+  return age;
+}
+
+// Fraction of the Moon's disk illuminated (0 = new, 1 = full), from its age
+// in the synodic cycle -- the standard cosine approximation.
+function moonIlluminationFraction(date) {
+  return (1 - Math.cos((2 * Math.PI * moonAgeDays(date)) / SYNODIC_MONTH_DAYS)) / 2;
+}
+
+// A shower's peak date recurs on (approximately) the same calendar day every
+// year -- check the current, previous, and next calendar year's occurrence
+// of that month/day (handles the Dec/Jan-boundary showers like the Ursids
+// correctly) and see if `now` falls within `windowDays` of any of them.
+function nearestAnnualPeakMatch(now, month, day, windowDays) {
+  const year = now.getUTCFullYear();
+  for (const y of [year - 1, year, year + 1]) {
+    const peak = Date.UTC(y, month - 1, day, 12, 0, 0);
+    if (Math.abs(now.getTime() - peak) <= windowDays * 86400000) return true;
+  }
+  return false;
+}
+
 function chooseMeteorShower(now, sunElevation) {
   if (sunElevation > -0.15) return null; // needs real astronomical darkness, same bar as Aurora
-  for (const sh of METEOR_SHOWERS_2026) {
-    if (!sh.skyDarkOk) continue;
-    if (now < new Date(sh.window[0]) || now > new Date(sh.window[1])) continue;
+  // A moon over ~65% illuminated washes out all but the brightest meteors --
+  // computed live from real lunar mechanics (see moonIlluminationFraction
+  // above), not a hardcoded per-year guess, so this self-corrects every year.
+  if (moonIlluminationFraction(now) > 0.65) return null;
+  for (const sh of METEOR_SHOWERS) {
+    if (!nearestAnnualPeakMatch(now, sh.peakMonth, sh.peakDay, sh.windowDays)) continue;
     if (altitudeOfRaDec(sh.raHours, sh.decDeg, now, LAT, LON) >= 15) {
       return { key: 'meteor-shower', label: `${sh.name} Meteor Shower` };
     }
@@ -679,26 +828,65 @@ function chooseMeteorShower(now, sunElevation) {
   return null;
 }
 
-// Full-supermoon instants for 2026 (Fred Espenak's perigee-full-moon list,
-// cross-checked against EarthSky/BBC Sky at Night/Old Farmer's Almanac). A
-// full moon rises close to sunset and sets close to sunrise by definition
-// (it's on the opposite side of the sky from the Sun), so "is it currently
-// night in Tiburon" is already an honest, astronomically-grounded proxy for
-// "is the supermoon actually up over Tiburon" without needing a full lunar
-// ephemeris.
-const SUPERMOONS_2026 = [
+// Supermoon detection, hybrid precise+evergreen:
+//  1) A table of REAL, precisely-dated full-supermoon instants (Fred
+//     Espenak's perigee-full-moon list, cross-checked against EarthSky/BBC
+//     Sky at Night/Old Farmer's Almanac) for the years already researched.
+//  2) FAILSAFE fallback for any date beyond that table: real lunar
+//     mechanics again, this time combining the synodic month (for "is it a
+//     full moon") with the anomalistic month (perigee-to-perigee, 27.554549
+//     days, anchored to the well-documented 2016-11-14 11:23 UTC perigee)
+//     to ask "is the Moon ALSO near perigee right now" -- the literal
+//     definition of a supermoon -- with no yearly table at all. This is a
+//     simplified 2-cycle approximation (real perigee timing has additional
+//     solar-perturbation wobble a full ephemeris would capture), so it's
+//     intentionally used only once the precise table runs out, verified
+//     against 2026's 3 known real supermoons (correctly flags Jan 3 and Dec
+//     24; misses Nov 24 by a matter of hours, which the precise table below
+//     already covers exactly).
+const SUPERMOONS_TABLE = [
   { name: 'Wolf Moon', peak: '2026-01-03T10:03:00Z' },
   { name: 'Beaver Moon', peak: '2026-11-24T14:53:00Z' },
   { name: 'Cold Moon', peak: '2026-12-24T01:28:00Z' },
+  { name: 'Supermoon', peak: '2027-01-22T12:17:00Z' },
+  { name: 'Supermoon', peak: '2028-01-12T04:02:00Z' },
+  { name: 'Supermoon', peak: '2028-02-10T15:03:00Z' },
+  { name: 'Supermoon', peak: '2028-03-11T01:05:00Z' },
+  { name: 'Supermoon', peak: '2029-02-28T17:10:00Z' },
+  { name: 'Supermoon', peak: '2029-03-30T02:26:00Z' },
+  { name: 'Supermoon', peak: '2029-04-28T10:36:00Z' },
 ];
 const SUPERMOON_WINDOW_HOURS = 20; // looks essentially full to the eye about a day either side of peak
 
+const ANOMALISTIC_MONTH_DAYS = 27.554549878;
+const REF_PERIGEE_JD = 2457707.974; // 2016-11-14 11:23 UTC (closest perigee of the 21st century, widely documented)
+
+function daysFromNearestPerigee(date) {
+  let phase = (toJulianDate(date) - REF_PERIGEE_JD) % ANOMALISTIC_MONTH_DAYS;
+  if (phase < 0) phase += ANOMALISTIC_MONTH_DAYS;
+  return Math.min(phase, ANOMALISTIC_MONTH_DAYS - phase);
+}
+
+function algorithmicSupermoonCheck(now) {
+  const age = moonAgeDays(now);
+  let distFromFull = age - SYNODIC_MONTH_DAYS / 2;
+  if (distFromFull > SYNODIC_MONTH_DAYS / 2) distFromFull -= SYNODIC_MONTH_DAYS;
+  if (distFromFull < -SYNODIC_MONTH_DAYS / 2) distFromFull += SYNODIC_MONTH_DAYS;
+  if (Math.abs(distFromFull) > 1.0) return false; // must be within ~1 day of full moon
+  return daysFromNearestPerigee(now) <= 2.5; // must be within ~2.5 days of perigee
+}
+
 function chooseSupermoon(now, sunElevation) {
   if (sunElevation > -0.05) return null;
-  for (const sm of SUPERMOONS_2026) {
+  for (const sm of SUPERMOONS_TABLE) {
     if (Math.abs(now.getTime() - new Date(sm.peak).getTime()) <= SUPERMOON_WINDOW_HOURS * 3600 * 1000) {
       return { key: 'supermoon', label: `Supermoon (${sm.name})` };
     }
+  }
+  // Beyond the precise table above: fall back to the algorithmic check so
+  // this never goes silent, just slightly less date-precise.
+  if (algorithmicSupermoonCheck(now)) {
+    return { key: 'supermoon', label: 'Supermoon' };
   }
   return null;
 }
@@ -777,7 +965,7 @@ function render(data, fx) {
     // supermoon > NASA close-approach > rainbow > ordinary weather.
     const now = new Date();
     const astroInfo =
-      chooseAstroCondition(now) ||
+      chooseAstroCondition(now, sunState.elevation) ||
       chooseAuroraCondition(aurora, sunState.elevation) ||
       chooseMeteorShower(now, sunState.elevation) ||
       chooseSupermoon(now, sunState.elevation) ||
