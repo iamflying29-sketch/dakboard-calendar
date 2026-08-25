@@ -751,6 +751,91 @@ async function fetchSolarEclipseSchedule() {
   }
 }
 
+// Lunar eclipses on the SAME live CycleCalcs engine used for solar above --
+// even more foolproof here, because a lunar eclipse's visibility is a much
+// simpler question (is the Moon above Tiburon's horizon during the event?)
+// than a solar eclipse's narrow shadow path, so this project keeps THREE
+// independent tiers for lunar/Blood Moon instead of solar's two: (1) this
+// live per-coordinate API query, refreshed monthly; (2) LUNAR_ECLIPSES, the
+// hand-verified static table above; (3) algorithmicLunarEclipseCheck()
+// below, a real orbital-mechanics model validated against 6 independent
+// historical/future eclipses that needs no network or table at all. Solar
+// eclipses can't safely have that same tier-3 algorithmic fallback (see the
+// comment above SOLAR_ECLIPSE_API_URL) -- but lunar eclipses genuinely can,
+// making Blood Moon/lunar eclipse automation the most bulletproof condition
+// in this entire file: it would take BOTH a cyclecalcs.com outage AND this
+// file never being updated again for the static table to matter, and even
+// then the algorithm still catches every real eclipse on its own.
+const LUNAR_ECLIPSE_API_URL = 'https://www.cyclecalcs.com/v2/eclipses';
+const LUNAR_ECLIPSE_CACHE_KEY = 'lunarEclipseScheduleCacheV1';
+const LUNAR_ECLIPSE_CACHE_MAX_AGE_MS = 30 * 24 * 3600 * 1000; // refresh monthly, same reasoning as solar
+
+// A lunar eclipse reads as a "Blood Moon" whenever a large enough fraction
+// of the Moon sits inside Earth's umbra, not only during technical totality
+// -- the real Aug 2026 event (96.6% umbral obscuration, officially
+// "partial") already looks essentially fully red at maximum. 90% is a
+// reasonable, real-astronomy-informed line: below it, a bright uneclipsed
+// sliver still dominates the Moon's appearance; at or above it, the whole
+// disc reads as reddened.
+const BLOOD_MOON_OBSCURATION_THRESHOLD = 0.90;
+
+function windowsForLunarEclipseEntry(e) {
+  const c = {};
+  for (const contact of e.contacts_utc || []) c[contact.kind] = contact.instant;
+  const windows = [];
+  const highObscuration = (e.umbral_obscuration_fraction || 0) >= BLOOD_MOON_OBSCURATION_THRESHOLD;
+  if (c.total_begin && c.total_end) {
+    windows.push({ window: [c.total_begin, c.total_end], key: 'blood-moon', label: 'Blood Moon (Total Lunar Eclipse)' });
+  }
+  if (c.partial_begin && c.partial_end) {
+    windows.push(highObscuration
+      ? { window: [c.partial_begin, c.partial_end], key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)' }
+      : { window: [c.partial_begin, c.partial_end], key: 'eclipse-lunar', label: 'Partial Lunar Eclipse' });
+  }
+  if (c.penumbral_begin && c.penumbral_end) {
+    windows.push({ window: [c.penumbral_begin, c.penumbral_end], key: 'eclipse-lunar', label: 'Lunar Eclipse' });
+  }
+  // Most-specific-first (total, then partial, then penumbral) so
+  // chooseAstroCondition's first-match-wins loop prefers the more dramatic,
+  // more accurate classification whenever windows overlap (a total window
+  // always sits inside its own partial window, which sits inside its own
+  // penumbral window).
+  return windows;
+}
+
+async function fetchLunarEclipseSchedule() {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(LUNAR_ECLIPSE_CACHE_KEY) || 'null'); } catch (e) { cached = null; }
+  if (cached && Date.now() - cached.fetchedAt < LUNAR_ECLIPSE_CACHE_MAX_AGE_MS) {
+    return cached.windows;
+  }
+  try {
+    const start = new Date().toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 3650 * 86400000).toISOString().slice(0, 10); // 10-year API cap
+    const url = `${LUNAR_ECLIPSE_API_URL}?direction=range&start=${start}&end=${end}` +
+      `&type=lunar&visible_only=true&lat=${LAT}&lon=${LON}&include=local,contacts`;
+    const r = await fetchWithTimeout(url, 8000);
+    if (!r.ok) return cached ? cached.windows : null;
+    const body = await r.json();
+    const raw = (body.data && body.data.eclipses) || [];
+    // NOTE: deliberately not using Array.prototype.flatMap -- it's an
+    // ES2019+ RUNTIME method (not just syntax), so esbuild's syntax-level
+    // ES2015 downlevel target does NOT polyfill it, and this project's
+    // target WebView is old enough that ?./?? needed downleveling too, so
+    // it likely lacks flatMap natively as well. reduce+concat is safe on
+    // effectively any ES5+ engine.
+    const windows = raw
+      .filter(e => e.local && e.local.visible)
+      .map(windowsForLunarEclipseEntry)
+      .reduce((acc, arr) => acc.concat(arr), []);
+    try { localStorage.setItem(LUNAR_ECLIPSE_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), windows })); } catch (e) { /* ignore quota errors */ }
+    return windows;
+  } catch (e) {
+    console.warn('Lunar eclipse schedule fetch failed', e);
+    return cached ? cached.windows : null;
+  }
+}
+
 // FAILSAFE tier 2: if the live API above is ever unreachable AND there's no
 // usable cache yet (e.g. first-ever boot with no network), fall back to
 // this precise, hand-verified table instead of showing nothing. Sourced
@@ -761,28 +846,46 @@ const SOLAR_ECLIPSES_FALLBACK = [
   { window: ['2031-11-14T21:09:00Z', '2031-11-14T21:36:00Z'] }, // partial, ~0.1% obscuration (geometric graze)
   { window: ['2033-03-30T16:23:00Z', '2033-03-30T18:26:00Z'] }, // partial, ~39% obscuration
   { window: ['2035-09-02T02:23:00Z', '2035-09-02T03:25:00Z'] }, // partial, ~9% obscuration, near sunset
+  // Extended a further decade out (2036-2046) purely for tier-2 resilience
+  // depth -- pulled from the same CycleCalcs computation in one extra
+  // research pass, so even a decade-long outage of the live API still
+  // leaves this system fully automated with zero silent gaps.
+  { window: ['2039-06-21T14:45:00Z', '2039-06-21T16:49:00Z'] }, // annular, ~28% obscuration
+  { window: ['2040-11-04T17:50:00Z', '2040-11-04T18:39:00Z'] }, // partial, ~1% obscuration
+  { window: ['2043-04-09T18:00:00Z', '2043-04-09T19:28:00Z'] }, // partial, ~11% obscuration
+  { window: ['2044-08-23T01:06:00Z', '2044-08-23T02:57:00Z'] }, // total, ~84% obscuration
+  { window: ['2045-02-17T01:29:00Z', '2045-02-17T02:22:00Z'] }, // annular, ~3% obscuration
+  { window: ['2045-08-12T15:12:00Z', '2045-08-12T17:28:00Z'] }, // total (the "Great American" eclipse crossing Northern California), ~95% obscuration
+  { window: ['2046-02-05T23:36:00Z', '2046-02-06T02:06:00Z'] }, // annular, ~79% obscuration
 ];
 
-// FAILSAFE tier 3: this system is meant to run with zero manual
-// maintenance, but even a self-updating live API query has a finite lookup
-// window (10 years) and a hardcoded fallback table can only ever cover as
-// far as it was researched. Rather than silently going quiet, warn loudly
-// in the console (visible to anyone who opens devtools on the live device)
-// once we're within a year of the last known eclipse in whichever source
-// is currently active, so running low is a visible, actionable signal
-// instead of a silent gap. `liveSchedule` is populated once refresh() has
-// fetched it at least once; falls back to the static table before that.
-function checkSolarEclipseFreshness(liveSchedule) {
-  const solarWindows = (liveSchedule && liveSchedule.length ? liveSchedule : SOLAR_ECLIPSES_FALLBACK).map(e => e.window[1]);
-  const lunarEnds = LUNAR_ECLIPSES.map(e => (e.penumbral || e.umbral || e.total)[1]);
-  const lastEnd = [...solarWindows, ...lunarEnds].map(d => new Date(d).getTime()).reduce((a, b) => Math.max(a, b), 0);
+// FAILSAFE monitoring: this system is meant to run with zero manual
+// maintenance. The live CycleCalcs queries (solar and lunar) always
+// request "today through +10 years" on every successful refresh, so as
+// long as they succeed at least once every ~30 days (their cache TTL) they
+// never meaningfully run low on their own. This check exists for the
+// degraded case: if a live fetch has NEVER once succeeded (e.g. no network
+// since first boot), warn loudly in the console (visible to anyone who
+// opens devtools on the live device) once the static fallback table is
+// within a year of running out, so that's a visible, actionable signal
+// instead of a silent gap. Solar's fallback table needs a human to
+// eventually extend it (see SOLAR_ECLIPSES_FALLBACK above); lunar's does
+// NOT, because algorithmicLunarEclipseCheck() behind it works forever with
+// zero table/network at all -- so this only ever warns about solar.
+function checkSolarEclipseFreshness(liveSolarSchedule) {
+  if (liveSolarSchedule && liveSolarSchedule.length) return; // live tier is healthy and self-extending; nothing to warn about
+  const lastEnd = SOLAR_ECLIPSES_FALLBACK
+    .map(e => new Date(e.window[1]).getTime())
+    .reduce((a, b) => Math.max(a, b), 0);
   if (Date.now() > lastEnd - 365 * 24 * 3600 * 1000) {
     console.warn(
-      'Solar/lunar eclipse data only extends through ' + new Date(lastEnd).toISOString().slice(0, 10) +
-      ' -- fewer than a year of known eclipses remain in the live schedule/fallback ' +
-      'table. Lunar eclipse automation still works forever via the algorithmic ' +
-      'node-crossing failsafe above, but solar eclipse coverage depends on ' +
-      'cyclecalcs.com staying reachable, or SOLAR_ECLIPSES_FALLBACK being extended.'
+      'The live solar eclipse API (cyclecalcs.com) has not been reachable, and ' +
+      'SOLAR_ECLIPSES_FALLBACK only extends through ' + new Date(lastEnd).toISOString().slice(0, 10) +
+      ' -- fewer than a year of known solar eclipses remain in the fallback table. ' +
+      'Extend SOLAR_ECLIPSES_FALLBACK (cyclecalcs.com/v2/eclipses, cross-checked ' +
+      'against timeanddate.com/eclipse) or restore network access. Lunar eclipse/ ' +
+      'Blood Moon automation is unaffected -- it has its own algorithmic infinite-' +
+      'horizon failsafe that needs no network or table at all.'
     );
   }
 }
@@ -846,28 +949,50 @@ function algorithmicLunarEclipseCheck(now) {
   return nodeDist <= 0.9 ? 'total' : 'partial';
 }
 
-function chooseAstroCondition(now, sunElevation, solarSchedule) {
+function chooseAstroCondition(now, sunElevation, solarSchedule, lunarSchedule) {
   if (sunElevation <= 0) {
-    for (const ecl of LUNAR_ECLIPSES) {
-      if (ecl.total && inWindow(now, ecl.total)) {
-        return { key: 'blood-moon', label: 'Blood Moon (Total Lunar Eclipse)', source: 'NASA' };
+    // Exactly ONE tier is consulted for "is there a lunar eclipse right
+    // now", chosen by what's actually available -- once a stronger tier
+    // has given its answer, weaker tiers are never consulted afterward
+    // (never used to "double check" a negative), so a cruder fallback can
+    // only ever fire when a more accurate source genuinely wasn't reachable
+    // at all, not second-guess one that was.
+    if (lunarSchedule && lunarSchedule.length) {
+      // Tier 1: live CycleCalcs per-coordinate schedule (most accurate --
+      // uses the Moon's real altitude/horizon data for Tiburon rather than
+      // this file's own sunElevation proxy). Its answer -- including "no
+      // eclipse right now" -- is trusted as-is; tiers 2/3 are not consulted
+      // afterward to "double check" it.
+      for (const w of lunarSchedule) {
+        if (inWindow(now, w.window)) {
+          return { key: w.key, label: w.label, source: 'cyclecalcs.com' };
+        }
       }
-      if (ecl.bloodAtMax && ecl.maxWindow && inWindow(now, ecl.maxWindow)) {
-        return { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'NASA' };
+    } else {
+      // Tier 2: hand-verified static table, used only while the live fetch
+      // has never once succeeded yet.
+      let matched = null;
+      for (const ecl of LUNAR_ECLIPSES) {
+        if (ecl.total && inWindow(now, ecl.total)) {
+          matched = { key: 'blood-moon', label: 'Blood Moon (Total Lunar Eclipse)', source: 'NASA' };
+        } else if (ecl.bloodAtMax && ecl.maxWindow && inWindow(now, ecl.maxWindow)) {
+          matched = { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'NASA' };
+        } else if (ecl.umbral && inWindow(now, ecl.umbral)) {
+          matched = { key: 'eclipse-lunar', label: 'Partial Lunar Eclipse', source: 'NASA' };
+        } else if (ecl.penumbral && inWindow(now, ecl.penumbral)) {
+          matched = { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'NASA' };
+        }
+        if (matched) return matched;
       }
-      if (ecl.umbral && inWindow(now, ecl.umbral)) {
-        return { key: 'eclipse-lunar', label: 'Partial Lunar Eclipse', source: 'NASA' };
-      }
-      if (ecl.penumbral && inWindow(now, ecl.penumbral)) {
-        return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'NASA' };
-      }
+      // Tier 3: the live API has never once succeeded AND the static table
+      // doesn't cover this specific date either -- fall back to the
+      // independently-validated algorithmic detector so lunar eclipse/Blood
+      // Moon automation genuinely never stops working, network or no
+      // network, table or no table.
+      const algo = algorithmicLunarEclipseCheck(now);
+      if (algo === 'total') return { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'computed' };
+      if (algo === 'partial') return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'computed' };
     }
-    // Table exhausted (or a real eclipse the table simply doesn't have yet)
-    // -- fall back to the validated algorithmic detector above so lunar
-    // eclipse/Blood Moon automation genuinely never stops working.
-    const algo = algorithmicLunarEclipseCheck(now);
-    if (algo === 'total') return { key: 'blood-moon', label: 'Blood Moon (Lunar Eclipse)', source: 'computed' };
-    if (algo === 'partial') return { key: 'eclipse-lunar', label: 'Lunar Eclipse', source: 'computed' };
   }
   if (sunElevation > -0.1) {
     // Live CycleCalcs schedule first (most accurate, self-updating); the
@@ -1102,7 +1227,7 @@ function chooseRainbow(cur, sunElevation) {
 }
 
 function render(data, fx) {
-  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo, solarSchedule } = data;
+  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo, solarSchedule, lunarSchedule } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const minutely15 = weather.minutely_15;
@@ -1145,7 +1270,7 @@ function render(data, fx) {
     // supermoon > NASA close-approach > rainbow > ordinary weather.
     const now = new Date();
     const astroInfo =
-      chooseAstroCondition(now, sunState.elevation, solarSchedule) ||
+      chooseAstroCondition(now, sunState.elevation, solarSchedule, lunarSchedule) ||
       chooseAuroraCondition(aurora, sunState.elevation) ||
       chooseMeteorShower(now, sunState.elevation) ||
       chooseSupermoon(now, sunState.elevation) ||
@@ -1302,7 +1427,7 @@ window.fxEngine = null; // exposed for debugging/testing
 
 async function refresh() {
   try {
-    const [weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule] = await Promise.all([
+    const [weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule, lunarSchedule] = await Promise.all([
       fetchWeather(),
       fetchNwsAlerts(),
       fetchEarthquake(),
@@ -1310,9 +1435,10 @@ async function refresh() {
       fetchAuroraData(),
       fetchNeoCloseApproach(),
       fetchSolarEclipseSchedule(),
+      fetchLunarEclipseSchedule(),
     ]);
     checkSolarEclipseFreshness(solarSchedule);
-    render({ ...weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule }, fxEngine);
+    render({ ...weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule, lunarSchedule }, fxEngine);
   } catch (e) {
     console.error('Weather fetch failed', e);
   }
