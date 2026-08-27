@@ -69,7 +69,9 @@ const AIRNOW_META_URL =
   "https://airfire-data-exports.s3.us-west-2.amazonaws.com/monitoring/v2/latest/data/airnow_PM2.5_nowcast_latest_meta.csv";
 const AIRNOW_DATA_URL =
   "https://airfire-data-exports.s3.us-west-2.amazonaws.com/monitoring/v2/latest/data/airnow_PM2.5_nowcast_latest_data.csv";
-const AQ_CACHE_TTL_MS = 5 * 60 * 1000;
+// Cache AQI for 15 minutes to match the widget's polling cadence and stay
+// comfortably inside Google Air Quality API's free 10,000 requests/month tier.
+const AQ_CACHE_TTL_MS = 15 * 60 * 1000;
 
 let aqCache = { time: 0, result: null, promise: null };
 
