@@ -1490,7 +1490,8 @@ function render(data, fx) {
   document.getElementById('aqiVal').textContent = aqiVal != null ? Math.round(aqiVal) : '—';
   document.getElementById('aqiVal').style.color = aqiCat.color;
   document.getElementById('aqiCat').textContent = aqiCat.label;
-  const aqiLocation = aq && aq.location ? `AirNow monitor: ${aq.location}. ` : '';
+  const aqiProvider = aq && aq.provider ? aq.provider : 'AirNow';
+  const aqiLocation = aq && aq.location ? `${aqiProvider}: ${aq.location}. ` : '';
   document.getElementById('aqiDesc').textContent = aqiLocation + aqiCat.desc;
   const aqiPct = aqiVal != null ? Math.min(100, (aqiVal / 300) * 100) : 0;
   document.getElementById('aqiMarker').style.left = `${aqiPct}%`;

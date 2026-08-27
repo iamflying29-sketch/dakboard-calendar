@@ -208,6 +208,68 @@ async function getAirNowAqi(lat, lon) {
   return aqCache.promise;
 }
 
+// ---- Google Maps Platform Air Quality API (BreezoMeter) --------------------
+// Google Maps and Apple Weather both use BreezoMeter technology for their AQI
+// layers. Google acquired BreezoMeter in 2022 and now exposes the same model as
+// the Google Maps Platform Air Quality API. It returns hyperlocal AQI at up to
+// 500m resolution for any lat/lon, which is what powers the AQI you see for
+// Tiburon in Google Maps and Apple Weather.
+// Requires a Google Cloud project, API key, and billing (free 10k calls/month
+// then ~$5/1k calls). The key is read from the GOOGLE_AIR_QUALITY_API_KEY env
+// var so it never lives in the repo.
+const GOOGLE_AQ_API_KEY = typeof Deno !== "undefined" ? Deno.env.get("GOOGLE_AIR_QUALITY_API_KEY") : null;
+
+async function fetchGoogleAqi(lat, lon, apiKey) {
+  const url = `https://airquality.googleapis.com/v1/currentConditions:lookup?key=${apiKey}`;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 10000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      signal: ac.signal,
+      body: JSON.stringify({
+        location: { latitude: lat, longitude: lon },
+        universalAqi: true,
+        extraComputations: ["LOCAL_AQI"],
+        customLocalAqis: [{ regionCode: "US", aqi: "usa_epa" }],
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from Google Air Quality API`);
+    const json = await res.json();
+    const index = (json.indexes || []).find((i) => i.code === "usa_epa") || (json.indexes || [])[0];
+    if (!index || typeof index.aqi !== "number") throw new Error("No AQI in Google response");
+    return {
+      aqi: index.aqi,
+      category: index.category ? index.category.replace(/\s+air quality$/i, "") : aqiLabel(index.aqi),
+      provider: "Google/BreezoMeter",
+      location: "Tiburon, CA",
+      updated: json.dateTime || null,
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function getGoogleAqi(lat, lon) {
+  if (!GOOGLE_AQ_API_KEY) throw new Error("GOOGLE_AIR_QUALITY_API_KEY not configured");
+  const now = Date.now();
+  if (now - aqCache.time < AQ_CACHE_TTL_MS && aqCache.result) {
+    return aqCache.result;
+  }
+  if (aqCache.promise) return aqCache.promise;
+  aqCache.promise = fetchGoogleAqi(lat, lon, GOOGLE_AQ_API_KEY)
+    .then((r) => {
+      aqCache = { time: now, result: r, promise: null };
+      return r;
+    })
+    .catch((e) => {
+      aqCache.promise = null;
+      throw e;
+    });
+  return aqCache.promise;
+}
+
 function jsonError(message, status = 500) {
   return new Response(JSON.stringify({ error: message }), {
     status,
@@ -244,7 +306,12 @@ Deno.serve(async (req) => {
       return jsonError("lat and lon query parameters are required", 400);
     }
     try {
-      const data = await getAirNowAqi(lat, lon);
+      // If a Google Maps Platform Air Quality API key is configured, use the
+      // hyperlocal BreezoMeter/Google model that powers Google Maps and Apple
+      // Weather. Otherwise fall back to the official EPA AirNow monitor reading.
+      const data = GOOGLE_AQ_API_KEY
+        ? await getGoogleAqi(lat, lon)
+        : await getAirNowAqi(lat, lon);
       return new Response(JSON.stringify(data), {
         status: 200,
         headers: {
@@ -254,7 +321,7 @@ Deno.serve(async (req) => {
         },
       });
     } catch (e) {
-      return jsonError(e.message || "AirNow AQI lookup failed", 502);
+      return jsonError(e.message || "AQI lookup failed", 502);
     }
   }
 
