@@ -15,6 +15,11 @@ const TZ = "America/Los_Angeles";
 // without ever seeing newer data.
 const REFRESH_MS = 15 * 60 * 1000; // poll every 15 minutes
 const LOCATION_LABEL = "Tiburon, CA";
+// The AQI endpoint is served by the same Deno Deploy app so we avoid a
+// cross-origin request and the widget can be tested on a local origin too.
+const AQI_BASE_URL = (typeof location !== "undefined" && location.origin && location.origin !== "null")
+  ? location.origin
+  : "https://dakboard-weather-widget.iamflying29-sketch.deno.net";
 
 const THEME = document.documentElement.getAttribute('data-theme') || 'day';
 const FORCED_SCENE = new URLSearchParams(location.search).get('scene');
@@ -301,8 +306,7 @@ async function fetchWeather() {
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
     `&timezone=${encodeURIComponent(TZ)}&forecast_days=7&past_days=1`;
-  const aqUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}` +
-    `&current=us_aqi&timezone=${encodeURIComponent(TZ)}`;
+  const aqUrl = `${AQI_BASE_URL}/aqi?lat=${LAT}&lon=${LON}`;
 
   const [wRes, aqRes, skyCoverIntervals] = await Promise.all([
     fetchWithTimeout(wUrl).then(r => r.json()),
@@ -1481,12 +1485,13 @@ function render(data, fx) {
   }
 
   // Air Quality panel
-  const aqiVal = aq && aq.current ? aq.current.us_aqi : null;
+  const aqiVal = aq && typeof aq.aqi === 'number' ? aq.aqi : null;
   const aqiCat = aqiCategory(aqiVal);
   document.getElementById('aqiVal').textContent = aqiVal != null ? Math.round(aqiVal) : '—';
   document.getElementById('aqiVal').style.color = aqiCat.color;
   document.getElementById('aqiCat').textContent = aqiCat.label;
-  document.getElementById('aqiDesc').textContent = aqiCat.desc;
+  const aqiLocation = aq && aq.location ? `AirNow monitor: ${aq.location}. ` : '';
+  document.getElementById('aqiDesc').textContent = aqiLocation + aqiCat.desc;
   const aqiPct = aqiVal != null ? Math.min(100, (aqiVal / 300) * 100) : 0;
   document.getElementById('aqiMarker').style.left = `${aqiPct}%`;
 
@@ -1494,8 +1499,9 @@ function render(data, fx) {
   const sunrise = new Date(daily.sunrise[TODAY_IDX]);
   const sunset = new Date(daily.sunset[TODAY_IDX]);
   const fmtT = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const visMiles = hourly.visibility && hourly.visibility[startIdx] != null
-    ? (hourly.visibility[startIdx] / 1609.34).toFixed(1) : '—';
+  const currentHourlyIdx = findCurrentHourlyIndex(hourly, new Date());
+  const visMiles = hourly.visibility && hourly.visibility[currentHourlyIdx] != null
+    ? (hourly.visibility[currentHourlyIdx] / 1609.34).toFixed(1) : '—';
   const fg = cssVar('--fg');
 
   const cards = [

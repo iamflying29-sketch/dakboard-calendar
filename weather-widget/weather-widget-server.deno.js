@@ -57,6 +57,168 @@ const CACHE_MAX_AGE = {
   ".svg": 604800,
 };
 
+// ---- AirNow AQI proxy ------------------------------------------------------
+// The widget used to pull AQI from Open-Meteo/CAMS, which is a coarse global
+// model and not authoritative for a US address. EPA AirNow's monitoring data
+// is authoritative, but its bulk CSV files are large. This endpoint fetches
+// the latest AirNow PM2.5 NowCast CSVs from the USFS AirFire public archive,
+// finds the nearest official monitor to the requested lat/lon, computes the
+// US AQI, and returns a small JSON payload the widget can poll cheaply.
+// No API key or account is required; the data is freely published by AirNow/USFS.
+const AIRNOW_META_URL =
+  "https://airfire-data-exports.s3.us-west-2.amazonaws.com/monitoring/v2/latest/data/airnow_PM2.5_nowcast_latest_meta.csv";
+const AIRNOW_DATA_URL =
+  "https://airfire-data-exports.s3.us-west-2.amazonaws.com/monitoring/v2/latest/data/airnow_PM2.5_nowcast_latest_data.csv";
+const AQ_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let aqCache = { time: 0, result: null, promise: null };
+
+async function fetchTextWithTimeout(url, ms = 15000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ac.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+    return await res.text();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function parseCsv(text) {
+  const lines = text.trim().split("\n");
+  if (lines.length === 0) return [];
+  const header = lines[0].split(",");
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",");
+    const obj = {};
+    header.forEach((h, i) => (obj[h] = cols[i]));
+    return obj;
+  });
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function pm25ToAqi(conc) {
+  const breakpoints = [
+    [0.0, 12.0, 0, 50],
+    [12.1, 35.4, 51, 100],
+    [35.5, 55.4, 101, 150],
+    [55.5, 150.4, 151, 200],
+    [150.5, 250.4, 201, 300],
+    [250.5, 350.4, 301, 400],
+    [350.5, 500.4, 401, 500],
+  ];
+  for (const [lo, hi, aLo, aHi] of breakpoints) {
+    if (conc >= lo && conc <= hi) {
+      return Math.round(((aHi - aLo) / (hi - lo)) * (conc - lo) + aLo);
+    }
+  }
+  return conc > 500.4 ? 500 : 0;
+}
+
+function aqiLabel(aqi) {
+  if (aqi <= 50) return "Good";
+  if (aqi <= 100) return "Moderate";
+  if (aqi <= 150) return "Unhealthy for Sensitive Groups";
+  if (aqi <= 200) return "Unhealthy";
+  if (aqi <= 300) return "Very Unhealthy";
+  return "Hazardous";
+}
+
+async function computeNearestAqi(lat, lon) {
+  const [metaText, dataText] = await Promise.all([
+    fetchTextWithTimeout(AIRNOW_META_URL),
+    fetchTextWithTimeout(AIRNOW_DATA_URL),
+  ]);
+
+  const metaRows = parseCsv(metaText);
+  let bestId = null;
+  let bestName = null;
+  let bestDist = Infinity;
+  for (const row of metaRows) {
+    const rLat = parseFloat(row.latitude);
+    const rLon = parseFloat(row.longitude);
+    if (!isFinite(rLat) || !isFinite(rLon)) continue;
+    const d = haversineKm(lat, lon, rLat, rLon);
+    if (d < bestDist) {
+      bestDist = d;
+      bestId = row.deviceDeploymentID;
+      bestName = row.locationName || "Unknown";
+    }
+  }
+  if (!bestId) throw new Error("No AirNow monitor found in metadata");
+
+  const dataLines = dataText.trim().split("\n");
+  const header = dataLines[0].split(",");
+  const idx = header.indexOf(bestId);
+  if (idx < 0) throw new Error("Nearest monitor not present in data file");
+
+  let pm25 = null;
+  let updated = null;
+  for (let i = dataLines.length - 1; i > 0; i--) {
+    const cols = dataLines[i].split(",");
+    const v = cols[idx];
+    if (v !== "" && v !== "NA") {
+      pm25 = parseFloat(v);
+      updated = cols[0];
+      break;
+    }
+  }
+  if (pm25 == null || !isFinite(pm25)) throw new Error("No PM2.5 reading available for nearest monitor");
+
+  const aqi = pm25ToAqi(pm25);
+  return {
+    aqi,
+    category: aqiLabel(aqi),
+    pm25: Math.round(pm25 * 10) / 10,
+    location: bestName,
+    distanceKm: Math.round(bestDist * 10) / 10,
+    updated,
+  };
+}
+
+async function getAirNowAqi(lat, lon) {
+  const now = Date.now();
+  if (now - aqCache.time < AQ_CACHE_TTL_MS && aqCache.result) {
+    return aqCache.result;
+  }
+  if (aqCache.promise) return aqCache.promise;
+  aqCache.promise = computeNearestAqi(lat, lon)
+    .then((r) => {
+      aqCache = { time: now, result: r, promise: null };
+      return r;
+    })
+    .catch((e) => {
+      aqCache.promise = null;
+      throw e;
+    });
+  return aqCache.promise;
+}
+
+function jsonError(message, status = 500) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+    },
+  });
+}
+
 // Strict allowlist pattern (not a fixed filename list) so newly added
 // weather icon SVGs etc. are automatically servable without having to
 // remember to update this file too -- while still fully preventing path
@@ -73,6 +235,27 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ status: "ok", service: "dakboard-weather-widget" }), {
       headers: { "content-type": "application/json", "cache-control": "no-store" },
     });
+  }
+
+  if (path === "aqi") {
+    const lat = parseFloat(url.searchParams.get("lat"));
+    const lon = parseFloat(url.searchParams.get("lon"));
+    if (!isFinite(lat) || !isFinite(lon)) {
+      return jsonError("lat and lon query parameters are required", 400);
+    }
+    try {
+      const data = await getAirNowAqi(lat, lon);
+      return new Response(JSON.stringify(data), {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300",
+          "access-control-allow-origin": "*",
+        },
+      });
+    } catch (e) {
+      return jsonError(e.message || "AirNow AQI lookup failed", 502);
+    }
   }
 
   if (!ALLOWED_PATTERN.test(path)) {
