@@ -287,9 +287,13 @@ function dayLabel(dateStr, idx) {
 }
 
 async function fetchWeather() {
-  // cell_selection=land prefers the nearest land model cell for coastal places
-  // like Tiburon, avoiding spurious over-water forecast values.
-  const baseParams = `latitude=${LAT}&longitude=${LON}&cell_selection=land&elevation=4`;
+  // The NOAA National Blend of Models (NBM) at 2.5 km resolution is the
+  // most accurate temperature forecast for this CONUS address; it blends
+  // local observations and produces values that match trusted local sources
+  // (e.g. Samsung Weather: High 83°, Low 59° on 2026-08-27). Open-Meteo's
+  // default "best_match" for this spot was running ~6°F too hot (High 92°).
+  // NBM is CONUS-only, which is fine for 7 Upper Cecilia Way, Tiburon, CA.
+  const baseParams = `latitude=${LAT}&longitude=${LON}&models=ncep_nbm_conus`;
   const wUrl = `https://api.open-meteo.com/v1/forecast?${baseParams}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation` +
     `&minutely_15=temperature_2m,weather_code,precipitation,precipitation_probability,is_day,cloud_cover` +
