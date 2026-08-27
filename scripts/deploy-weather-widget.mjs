@@ -69,12 +69,19 @@ async function main() {
     body: JSON.stringify({ slug: APP_SLUG }),
   }).catch(() => {});
 
+  // Pass runtime secrets through to Deno Deploy without ever writing them to files.
+  const envVars = [];
+  if (process.env.GOOGLE_AIR_QUALITY_API_KEY) {
+    envVars.push({ key: "GOOGLE_AIR_QUALITY_API_KEY", value: process.env.GOOGLE_AIR_QUALITY_API_KEY });
+  }
+
   const res = await fetch(`https://api.deno.com/v2/apps/${APP_SLUG}/deploy`, {
     method: "POST",
     headers,
     body: JSON.stringify({
       assets,
       config: { runtime: { type: "dynamic", entrypoint: "main.ts" } },
+      env_vars: envVars,
     }),
   });
 

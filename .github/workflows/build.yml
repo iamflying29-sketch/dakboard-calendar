@@ -45,6 +45,7 @@ jobs:
         run: npm run deploy:weather-widget
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+          GOOGLE_AIR_QUALITY_API_KEY: ${{ secrets.GOOGLE_AIR_QUALITY_API_KEY }}
 
       - name: Deploy calendar to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
