@@ -20,8 +20,9 @@ const DAY_SCREEN_ID = "scr_8ef733798d74";
 const NIGHT_SCREEN_ID = "scr_f7c6eb565c43";
 const LATITUDE = 37.8991768;
 const LONGITUDE = -122.4949685;
-const SUN_API_URL = "https://api.sunrise-sunset.org/json";
+const SUN_API_URL = "https://api.sunrise-sunset.org/v2";
 const DAKBOARD_API_BASE = "https://dakboard.com/api/2";
+const TIME_ZONE = "America/Los_Angeles";
 
 async function fetchWithTimeout(url, ms = 15000, options = {}) {
   const controller = new AbortController();
@@ -33,29 +34,38 @@ async function fetchWithTimeout(url, ms = 15000, options = {}) {
   }
 }
 
-async function getSunTimes() {
-  // sunrise-sunset.org's "date" parameter is in UTC, so use today's UTC date.
-  // Using a Pacific-local date here caused the returned sunrise/sunset instants
-  // to be off by a day around midnight Pacific time.
-  const todayUtc = new Date().toISOString().slice(0, 10);
+function dateInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type).value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+async function getSunTimes(now = new Date()) {
+  const localDate = dateInTimeZone(now, TIME_ZONE);
   const params = new URLSearchParams({
     lat: String(LATITUDE),
     lng: String(LONGITUDE),
-    date: todayUtc,
-    formatted: "0",
+    date: localDate,
+    tz: TIME_ZONE,
+    time_format: "iso8601",
   });
   const r = await fetchWithTimeout(`${SUN_API_URL}?${params}`);
   if (!r.ok) throw new Error(`Sun API error: ${r.status}`);
   const data = await r.json();
-  if (!data.results || !data.results.sunrise || !data.results.sunset) {
-    throw new Error(`Unexpected sun API response: ${JSON.stringify(data).slice(0, 200)}`);
+  if (!data.sunrise || !data.sunset || data.date !== localDate || data.tzid !== TIME_ZONE) {
+    throw new Error(`Unexpected sun API response: ${JSON.stringify(data).slice(0, 300)}`);
   }
-  const sunrise = new Date(data.results.sunrise);
-  const sunset = new Date(data.results.sunset);
+  const sunrise = new Date(data.sunrise);
+  const sunset = new Date(data.sunset);
   if (!isFinite(sunrise.getTime()) || !isFinite(sunset.getTime())) {
-    throw new Error(`Could not parse sunrise/sunset: ${data.results.sunrise} / ${data.results.sunset}`);
+    throw new Error(`Could not parse sunrise/sunset: ${data.sunrise} / ${data.sunset}`);
   }
-  return { sunrise, sunset };
+  return { localDate, sunrise, sunset };
 }
 
 async function getCurrentScreen() {
@@ -81,13 +91,19 @@ async function switchIfNeeded() {
     return;
   }
 
-  const { sunrise, sunset } = await getSunTimes();
-  const now = new Date();
+  let now = new Date();
+  const { localDate, sunrise, sunset } = await getSunTimes(now);
+  const nextBoundary = now < sunrise ? sunrise : now < sunset ? sunset : null;
+  const delayMs = nextBoundary ? nextBoundary.getTime() - now.getTime() : 0;
+  if (delayMs > 0 && delayMs <= 60000) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    now = new Date();
+  }
   const isDay = now >= sunrise && now < sunset;
   const desired = isDay ? DAY_SCREEN_ID : NIGHT_SCREEN_ID;
   const label = isDay ? "DAY" : "NIGHT";
 
-  console.log(`[${now.toISOString()}] Sunrise: ${sunrise.toISOString()}, Sunset: ${sunset.toISOString()}, Desired: ${label}`);
+  console.log(`[${now.toISOString()}] Pacific date: ${localDate}, Sunrise: ${sunrise.toISOString()}, Sunset: ${sunset.toISOString()}, Desired: ${label}`);
 
   const current = await getCurrentScreen();
   if (current !== desired) {
