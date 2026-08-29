@@ -110,8 +110,13 @@ Deno.cron("DAKboard Switcher", "* * * * *", async () => {
 });
 
 // Also serve HTTP so the app stays alive and can be health-checked.
-Deno.serve((req) => {
-  return new Response(JSON.stringify({ status: "ok", service: "dakboard-switcher" }), {
-    headers: { "Content-Type": "application/json" },
+Deno.serve(() => {
+  return new Response(JSON.stringify({
+    status: DAKBOARD_API_KEY ? "ok" : "misconfigured",
+    service: "dakboard-switcher",
+    apiKeyConfigured: Boolean(DAKBOARD_API_KEY),
+  }), {
+    status: DAKBOARD_API_KEY ? 200 : 503,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 });
