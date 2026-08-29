@@ -34,12 +34,14 @@ async function fetchWithTimeout(url, ms = 15000, options = {}) {
 }
 
 async function getSunTimes() {
-  const now = new Date();
-  const today = now.toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  // sunrise-sunset.org's "date" parameter is in UTC, so use today's UTC date.
+  // Using a Pacific-local date here caused the returned sunrise/sunset instants
+  // to be off by a day around midnight Pacific time.
+  const todayUtc = new Date().toISOString().slice(0, 10);
   const params = new URLSearchParams({
     lat: String(LATITUDE),
     lng: String(LONGITUDE),
-    date: today,
+    date: todayUtc,
     formatted: "0",
   });
   const r = await fetchWithTimeout(`${SUN_API_URL}?${params}`);
