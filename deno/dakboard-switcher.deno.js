@@ -20,8 +20,18 @@ const DAY_SCREEN_ID = "scr_8ef733798d74";
 const NIGHT_SCREEN_ID = "scr_f7c6eb565c43";
 const LATITUDE = 37.8991768;
 const LONGITUDE = -122.4949685;
-const SUN_API_URL = "https://api.sunrise-sunset.org/v2";
+const SUN_API_URL = "https://api.sunrise-sunset.org/json";
 const DAKBOARD_API_BASE = "https://dakboard.com/api/2";
+
+async function fetchWithTimeout(url, ms = 15000, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function getSunTimes() {
   const now = new Date();
@@ -30,26 +40,31 @@ async function getSunTimes() {
     lat: String(LATITUDE),
     lng: String(LONGITUDE),
     date: today,
-    tz: "America/Los_Angeles",
-    time_format: "iso8601",
+    formatted: "0",
   });
-  const r = await fetch(`${SUN_API_URL}?${params}`);
+  const r = await fetchWithTimeout(`${SUN_API_URL}?${params}`);
   if (!r.ok) throw new Error(`Sun API error: ${r.status}`);
   const data = await r.json();
-  const sunrise = new Date(data.sunrise);
-  const sunset = new Date(data.sunset);
+  if (!data.results || !data.results.sunrise || !data.results.sunset) {
+    throw new Error(`Unexpected sun API response: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+  const sunrise = new Date(data.results.sunrise);
+  const sunset = new Date(data.results.sunset);
+  if (!isFinite(sunrise.getTime()) || !isFinite(sunset.getTime())) {
+    throw new Error(`Could not parse sunrise/sunset: ${data.results.sunrise} / ${data.results.sunset}`);
+  }
   return { sunrise, sunset };
 }
 
 async function getCurrentScreen() {
-  const r = await fetch(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`);
+  const r = await fetchWithTimeout(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`);
   if (!r.ok) throw new Error(`DAKboard device error: ${r.status}`);
   const data = await r.json();
   return data.screen_id;
 }
 
 async function setScreen(screenId) {
-  const r = await fetch(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`, {
+  const r = await fetchWithTimeout(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`, {
     method: "PUT",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `screen_id=${screenId}`,

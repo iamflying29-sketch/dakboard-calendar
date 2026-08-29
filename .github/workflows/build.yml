@@ -46,6 +46,11 @@ jobs:
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
 
+      - name: Deploy sunrise/sunset screen switcher to Deno Deploy
+        run: npm run deploy:switcher
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+
       - name: Deploy calendar to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
