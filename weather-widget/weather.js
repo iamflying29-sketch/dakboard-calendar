@@ -1537,8 +1537,12 @@ function uvLabel(uv) {
 
 let fxEngine = null;
 window.fxEngine = null; // exposed for debugging/testing
+let refreshInFlight = false;
+let refreshRetryTimer = null;
 
 async function refresh() {
+  if (refreshInFlight) return;
+  refreshInFlight = true;
   try {
     const [weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule, lunarSchedule] = await Promise.all([
       fetchWeather(),
@@ -1552,8 +1556,22 @@ async function refresh() {
     ]);
     checkSolarEclipseFreshness(solarSchedule);
     render({ ...weatherData, alerts, quake, noaaStorms, aurora, neo, solarSchedule, lunarSchedule }, fxEngine);
+    if (refreshRetryTimer) {
+      clearTimeout(refreshRetryTimer);
+      refreshRetryTimer = null;
+    }
   } catch (e) {
     console.error('Weather fetch failed', e);
+    const condition = document.getElementById('nowCond');
+    if (condition && condition.textContent === 'Loading…') condition.textContent = 'Weather temporarily unavailable';
+    if (!refreshRetryTimer) {
+      refreshRetryTimer = setTimeout(() => {
+        refreshRetryTimer = null;
+        refresh();
+      }, 60 * 1000);
+    }
+  } finally {
+    refreshInFlight = false;
   }
 }
 

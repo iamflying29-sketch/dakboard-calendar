@@ -7,11 +7,9 @@ on:
     # (winter), so a single fixed UTC hour is only correct for half the year.
     # Firing at both covers midnight Pacific correctly year-round; the
     # "extra" run in the other half of the year is harmless/idempotent since
-    # build.py always regenerates from the actual current Pacific date
-    # (see build.py's today_local()), and a client-side JS safety net in the
-    # generated HTML also self-corrects "today" from the browser's own clock.
+    # build.py always regenerates from the actual current Pacific date.
     - cron: '0 7,8 * * *'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch:
   push:
     branches: [main]
 
@@ -19,8 +17,9 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  calendar:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -28,12 +27,26 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Build static HTML
+        run: python build.py
+
+      - name: Deploy calendar to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          force_orphan: true
+
+  weather-widget:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Build static HTML
-        run: python build.py
 
       - name: Install weather widget build deps
         run: npm ci
@@ -46,14 +59,18 @@ jobs:
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
 
+  sunrise-sunset-switcher:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Deploy sunrise/sunset screen switcher to Deno Deploy
         run: npm run deploy:switcher
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-
-      - name: Deploy calendar to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
-          force_orphan: true

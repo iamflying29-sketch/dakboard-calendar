@@ -23,6 +23,7 @@ const LONGITUDE = -122.4949685;
 const SUN_API_URL = "https://api.sunrise-sunset.org/v2";
 const DAKBOARD_API_BASE = "https://dakboard.com/api/2";
 const TIME_ZONE = "America/Los_Angeles";
+let sunCache = null;
 
 async function fetchWithTimeout(url, ms = 15000, options = {}) {
   const controller = new AbortController();
@@ -47,6 +48,7 @@ function dateInTimeZone(date, timeZone) {
 
 async function getSunTimes(now = new Date()) {
   const localDate = dateInTimeZone(now, TIME_ZONE);
+  if (sunCache && sunCache.localDate === localDate) return sunCache;
   const params = new URLSearchParams({
     lat: String(LATITUDE),
     lng: String(LONGITUDE),
@@ -65,7 +67,8 @@ async function getSunTimes(now = new Date()) {
   if (!isFinite(sunrise.getTime()) || !isFinite(sunset.getTime())) {
     throw new Error(`Could not parse sunrise/sunset: ${data.sunrise} / ${data.sunset}`);
   }
-  return { localDate, sunrise, sunset };
+  sunCache = { localDate, sunrise, sunset };
+  return sunCache;
 }
 
 async function getCurrentScreen() {
@@ -93,6 +96,7 @@ async function switchIfNeeded() {
 
   let now = new Date();
   const { localDate, sunrise, sunset } = await getSunTimes(now);
+  now = new Date();
   const nextBoundary = now < sunrise ? sunrise : now < sunset ? sunset : null;
   const delayMs = nextBoundary ? nextBoundary.getTime() - now.getTime() : 0;
   if (delayMs > 0 && delayMs <= 60000) {
