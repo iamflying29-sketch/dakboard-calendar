@@ -130,6 +130,10 @@ function zonedTimeToUtc(naiveStr, timeZone) {
   return new Date(asUtc.getTime() + offsetMs);
 }
 
+function weatherTimeToUtc(timeStr) {
+  return /(?:Z|[+-]\d{2}:\d{2})$/.test(timeStr) ? new Date(timeStr) : zonedTimeToUtc(timeStr, TZ);
+}
+
 // ---------- Failsafe condition resolution (clear/cloudy/precip) ----------
 // The top "Current" condition and hourly strip must never say "Clear" when
 // there are actual clouds overhead. Open-Meteo's instantaneous
@@ -298,7 +302,7 @@ async function fetchWeather() {
   // address. NBM blends local observations and matches trusted local readings
   // (e.g. Samsung Weather: High 83°, Low 59° on 2026-08-27). This endpoint is
   // CONUS-only, which is correct for 7 Upper Cecilia Way, Tiburon, CA 94920.
-  const baseParams = `latitude=${LAT}&longitude=${LON}&models=ncep_nbm_conus`;
+  const baseParams = `latitude=${LAT}&longitude=${LON}&models=ncep_nbm_conus&cell_selection=land`;
   const wUrl = `https://api.open-meteo.com/v1/gfs?${baseParams}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,precipitation` +
     `&minutely_15=temperature_2m,weather_code,precipitation,precipitation_probability,is_day,cloud_cover` +
@@ -307,13 +311,27 @@ async function fetchWeather() {
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch` +
     `&timezone=${encodeURIComponent(TZ)}&forecast_days=7&past_days=1`;
   const aqUrl = `${AQI_BASE_URL}/aqi?lat=${LAT}&lon=${LON}`;
+  const uvUrl = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}` +
+    `&current=uv_index&timezone=${encodeURIComponent(TZ)}&cell_selection=land`;
+  const localDate = formatInTimeZone(new Date(), TZ).slice(0, 10);
+  const solarEnd = new Date(`${localDate}T12:00:00Z`);
+  solarEnd.setUTCDate(solarEnd.getUTCDate() + 6);
+  const endDate = solarEnd.toISOString().slice(0, 10);
+  const sunUrl = `https://api.sunrise-sunset.org/v2?lat=${LAT}&lng=${LON}` +
+    `&date_start=${localDate}&date_end=${endDate}&tz=${encodeURIComponent(TZ)}&time_format=iso8601`;
 
-  const [wRes, aqRes, skyCoverIntervals] = await Promise.all([
-    fetchWithTimeout(wUrl).then(r => r.json()),
-    fetchWithTimeout(aqUrl).then(r => r.json()).catch(() => null),
+  const [wRes, aqRes, uvRes, sunRes, skyCoverIntervals] = await Promise.all([
+    fetchWithTimeout(wUrl).then(r => {
+      if (!r.ok) throw new Error(`Weather API error: ${r.status}`);
+      return r.json();
+    }),
+    fetchWithTimeout(aqUrl).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetchWithTimeout(uvUrl).then(r => r.ok ? r.json() : null).catch(() => null),
+    fetchWithTimeout(sunUrl).then(r => r.ok ? r.json() : null).catch(() => null),
     fetchNwsSkyCover(),
   ]);
-  return { weather: wRes, aq: aqRes, skyCoverIntervals };
+  const solarDays = sunRes && sunRes.tzid === TZ && Array.isArray(sunRes.days) ? sunRes.days : null;
+  return { weather: wRes, aq: aqRes, uv: uvRes && uvRes.current ? uvRes.current.uv_index : null, solarDays, skyCoverIntervals };
 }
 
 let lastDaily = null;
@@ -408,22 +426,25 @@ function skyCoverAt(intervals, date) {
   return null;
 }
 
-// Average sky cover across daylight hours (9am-6pm local) for a given
-// "YYYY-MM-DD" date, for a single representative daily condition/icon.
-function avgDaytimeSkyCover(intervals, dateStr) {
-  if (!intervals || !intervals.length) return null;
-  const samples = [];
-  for (let h = 9; h <= 18; h++) {
-    // dateStr + hour is a Pacific-local wall-clock sample ("9am-6pm local");
-    // must be resolved through zonedTimeToUtc (see comment above its
-    // definition), not `new Date(...)`, or this silently samples the wrong
-    // actual hour on any runtime not itself set to Pacific time.
-    const d = zonedTimeToUtc(`${dateStr}T${String(h).padStart(2, '0')}:00:00`, TZ);
-    const v = skyCoverAt(intervals, d);
-    if (v != null) samples.push(v);
+// Average NWS sky cover across the date's actual sunrise-to-sunset interval.
+// Weight each NWS interval by how many daylight milliseconds it overlaps, so
+// partial hours at sunrise/sunset and multi-hour NWS periods are represented
+// accurately instead of using a fixed clock-hour window.
+function avgDaylightSkyCover(intervals, sunriseStr, sunsetStr) {
+  if (!intervals || !intervals.length || !sunriseStr || !sunsetStr) return null;
+  const sunrise = weatherTimeToUtc(sunriseStr);
+  const sunset = weatherTimeToUtc(sunsetStr);
+  let weightedTotal = 0;
+  let totalMs = 0;
+  for (const iv of intervals) {
+    if (iv.value == null) continue;
+    const overlapStart = Math.max(iv.start.getTime(), sunrise.getTime());
+    const overlapEnd = Math.min(iv.end.getTime(), sunset.getTime());
+    const overlapMs = Math.max(0, overlapEnd - overlapStart);
+    weightedTotal += Number(iv.value) * overlapMs;
+    totalMs += overlapMs;
   }
-  if (!samples.length) return null;
-  return samples.reduce((a, b) => a + b, 0) / samples.length;
+  return totalMs > 0 ? weightedTotal / totalMs : null;
 }
 
 // Open-Meteo's own `daily.weather_code` is a single model-chosen aggregate
@@ -435,19 +456,18 @@ function avgDaytimeSkyCover(intervals, dateStr) {
 // single hourly sample from 9am-6pm was actually 0/2 (Clear/Partly Cloudy),
 // and the fog code sits outside the [0,1,2,3] range the NWS sky-cover
 // override already corrects. This derives the single representative
-// condition for the 5-day list from the DAYTIME (9am-6pm Pacific) hourly
-// series instead -- the same hourly array already fetched for the hourly
-// strip -- so an early-morning-only code can never stand in for a day that
-// is clear by the time it matters. Pure string slicing on Open-Meteo's own
-// naive local-time strings (no Date parsing, so this has none of the
-// runtime-timezone ambiguity called out above).
-function daytimeWeatherCode(hourly, dateStr) {
-  if (!hourly || !hourly.time) return null;
+// condition for the 5-day list from every hourly forecast sample between
+// that date's actual sunrise and sunset in Pacific time -- the same hourly
+// array already fetched for the hourly strip -- so the representative icon
+// follows the full local daylight period instead of arbitrary fixed hours.
+function daylightWeatherCode(hourly, sunriseStr, sunsetStr) {
+  if (!hourly || !hourly.time || !sunriseStr || !sunsetStr) return null;
+  const sunrise = weatherTimeToUtc(sunriseStr);
+  const sunset = weatherTimeToUtc(sunsetStr);
   const counts = new Map();
   for (let i = 0; i < hourly.time.length; i++) {
-    if (hourly.time[i].slice(0, 10) !== dateStr) continue;
-    const hr = parseInt(hourly.time[i].slice(11, 13), 10);
-    if (hr < 9 || hr > 18) continue;
+    const sampleTime = zonedTimeToUtc(hourly.time[i], TZ);
+    if (sampleTime < sunrise || sampleTime > sunset) continue;
     const code = hourly.weather_code[i];
     counts.set(code, (counts.get(code) || 0) + 1);
   }
@@ -1313,11 +1333,14 @@ function chooseRainbow(cur, sunElevation) {
 }
 
 function render(data, fx) {
-  const { weather, aq, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo, solarSchedule, lunarSchedule } = data;
+  const { weather, aq, uv, solarDays, alerts, quake, noaaStorms, skyCoverIntervals, aurora, neo, solarSchedule, lunarSchedule } = data;
   const cur = weather.current;
   const hourly = weather.hourly;
   const minutely15 = weather.minutely_15;
   const daily = weather.daily;
+  const solarForDate = dateStr => solarDays && solarDays.find(day => day.date === dateStr);
+  const sunriseFor = idx => (solarForDate(daily.time[idx]) || {}).sunrise || daily.sunrise[idx];
+  const sunsetFor = idx => (solarForDate(daily.time[idx]) || {}).sunset || daily.sunset[idx];
   lastDaily = daily;
 
   const sunState = applySkyForNow(daily);
@@ -1329,8 +1352,8 @@ function render(data, fx) {
   // daily daytime summary, producing a current condition that said "Clear"
   // while Today said clouds (or vice-versa). Compute the Today condition once
   // and use it for both the top "Now" and the first daily row.
-  const todayNwsCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[TODAY_IDX]);
-  const todayDayCode = daytimeWeatherCode(hourly, daily.time[TODAY_IDX]);
+  const todayNwsCC = avgDaylightSkyCover(skyCoverIntervals, sunriseFor(TODAY_IDX), sunsetFor(TODAY_IDX));
+  const todayDayCode = daylightWeatherCode(hourly, sunriseFor(TODAY_IDX), sunsetFor(TODAY_IDX));
   const todayInfo = resolveCondition(
     todayDayCode != null ? todayDayCode : daily.weather_code[TODAY_IDX],
     true,
@@ -1456,15 +1479,15 @@ function render(data, fx) {
       di = todayInfo;
     } else {
       // Same reasoning as the hourly strip: use the NWS gridpoint forecast's
-      // average daytime (9am-6pm) sky cover for this address's exact grid cell
+      // average sky cover across this date's actual sunrise-to-sunset interval
       // instead of Open-Meteo's own daily aggregate, which tends to report a
       // worst-case/overcast day even when it's actually clear-to-partly-cloudy
       // for most of the daylight hours (classic Bay Area marine-layer pattern).
-      const nwsDayCC = avgDaytimeSkyCover(skyCoverIntervals, daily.time[idx]);
-      // Prefer the daytime-hours-derived code (see daytimeWeatherCode above)
-      // over Open-Meteo's whole-day aggregate; only fall back to the daily
-      // aggregate if the hourly series doesn't cover that date for some reason.
-      const dayCode = daytimeWeatherCode(hourly, daily.time[idx]);
+      const nwsDayCC = avgDaylightSkyCover(skyCoverIntervals, sunriseFor(idx), sunsetFor(idx));
+      // Prefer the daylight-derived code (see daylightWeatherCode above) over
+      // Open-Meteo's whole-day aggregate; only fall back if hourly data does
+      // not cover that date's sunrise-to-sunset interval.
+      const dayCode = daylightWeatherCode(hourly, sunriseFor(idx), sunsetFor(idx));
       di = wmoInfo(dayCode != null ? dayCode : daily.weather_code[idx], true, nwsDayCC);
     }
     const lo = daily.temperature_2m_min[idx], hi = daily.temperature_2m_max[idx];
@@ -1497,20 +1520,25 @@ function render(data, fx) {
   document.getElementById('aqiMarker').style.left = `${aqiPct}%`;
 
   // Detail grid (UV, Sunrise/Sunset, Wind compass, Humidity, Visibility)
-  const sunrise = new Date(daily.sunrise[TODAY_IDX]);
-  const sunset = new Date(daily.sunset[TODAY_IDX]);
-  const fmtT = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const sunrise = weatherTimeToUtc(sunriseFor(TODAY_IDX));
+  const sunset = weatherTimeToUtc(sunsetFor(TODAY_IDX));
+  const fmtT = d => d.toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
   const currentHourlyIdx = findCurrentHourlyIndex(hourly, new Date());
-  const visMiles = hourly.visibility && hourly.visibility[currentHourlyIdx] != null
-    ? (hourly.visibility[currentHourlyIdx] / 1609.34).toFixed(1) : '—';
+  const visibilityValue = currentHourlyIdx >= 0 && hourly.visibility ? hourly.visibility[currentHourlyIdx] : null;
+  const visibilityUnit = weather.hourly_units && weather.hourly_units.visibility;
+  const visMiles = visibilityValue == null ? null
+    : visibilityUnit === 'ft' ? (visibilityValue / 5280).toFixed(1)
+      : visibilityUnit === 'km' ? (visibilityValue / 1.609344).toFixed(1)
+        : (visibilityValue / 1609.344).toFixed(1);
+  const uvValue = Number.isFinite(uv) ? Math.round(uv * 10) / 10 : null;
   const fg = cssVar('--fg');
 
   const cards = [
-    { icon: WI.uv(fg), label: 'UV Index', value: Math.round(daily.uv_index_max[TODAY_IDX]), sub: uvLabel(daily.uv_index_max[TODAY_IDX]) },
+    { icon: WI.uv(fg), label: 'UV Index', value: uvValue != null ? uvValue : '—', sub: uvValue != null ? uvLabel(uvValue) : '' },
     { icon: WI.sunrise(fg), label: 'Sunrise', value: fmtT(sunrise), sub: `Sunset ${fmtT(sunset)}` },
     { icon: '', label: 'Wind', value: `${Math.round(cur.wind_speed_10m)} mph`, sub: windDirLabel(cur.wind_direction_10m), compass: cur.wind_direction_10m },
     { icon: WI.drop(fg), label: 'Humidity', value: `${Math.round(cur.relative_humidity_2m)}%`, sub: '' },
-    { icon: WI.eye(fg), label: 'Visibility', value: `${visMiles} mi`, sub: '' },
+    { icon: WI.eye(fg), label: 'Visibility', value: visMiles != null ? `${visMiles} mi` : '—', sub: '' },
     { icon: WI.thermo(fg), label: 'Feels Like', value: fToLabel(cur.apparent_temperature), sub: '' },
   ];
   const gridEl = document.getElementById('grid');
