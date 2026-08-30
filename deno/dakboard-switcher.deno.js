@@ -14,7 +14,7 @@
  *   DAKBOARD_API_KEY - Your DAKboard API key
  */
 
-const DAKBOARD_API_KEY = Deno.env.get("DAKBOARD_API_KEY");
+const DAKBOARD_API_KEY = (Deno.env.get("DAKBOARD_API_KEY") || "").trim();
 const DEVICE_ID = "dev_24e4f53b1b81";
 const DAY_SCREEN_ID = "scr_8ef733798d74";
 const NIGHT_SCREEN_ID = "scr_f7c6eb565c43";
@@ -24,6 +24,7 @@ const SUN_API_URL = "https://api.sunrise-sunset.org/v2";
 const DAKBOARD_API_BASE = "https://dakboard.com/api/2";
 const TIME_ZONE = "America/Los_Angeles";
 let sunCache = null;
+let lastRun = null;
 
 async function fetchWithTimeout(url, ms = 15000, options = {}) {
   const controller = new AbortController();
@@ -90,19 +91,11 @@ async function setScreen(screenId) {
 
 async function switchIfNeeded() {
   if (!DAKBOARD_API_KEY) {
-    console.error("DAKBOARD_API_KEY not set!");
-    return;
+    throw new Error("DAKBOARD_API_KEY not set");
   }
 
-  let now = new Date();
+  const now = new Date();
   const { localDate, sunrise, sunset } = await getSunTimes(now);
-  now = new Date();
-  const nextBoundary = now < sunrise ? sunrise : now < sunset ? sunset : null;
-  const delayMs = nextBoundary ? nextBoundary.getTime() - now.getTime() : 0;
-  if (delayMs > 0 && delayMs <= 60000) {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    now = new Date();
-  }
   const isDay = now >= sunrise && now < sunset;
   const desired = isDay ? DAY_SCREEN_ID : NIGHT_SCREEN_ID;
   const label = isDay ? "DAY" : "NIGHT";
@@ -117,26 +110,58 @@ async function switchIfNeeded() {
   } else {
     console.log(`Already on correct screen (${label}). No switch needed.`);
   }
+
+  return {
+    success: true,
+    pacificDate: localDate,
+    sunrise: sunrise.toISOString(),
+    sunset: sunset.toISOString(),
+    now: now.toISOString(),
+    desired,
+    current,
+    switched: current !== desired,
+  };
 }
 
 // Deno.cron runs on Deno Deploy's free tier (included in free plan).
 // Check every minute for precise sunrise/sunset switching.
-Deno.cron("DAKboard Switcher", "* * * * *", async () => {
+Deno.cron("DAKboard Switcher", "* * * * *", {
+  backoffSchedule: [5000, 15000, 30000],
+}, async () => {
   try {
-    await switchIfNeeded();
+    lastRun = { ok: true, result: await switchIfNeeded(), at: new Date().toISOString() };
   } catch (e) {
+    lastRun = { ok: false, error: e.message, at: new Date().toISOString() };
     console.error("Switcher error:", e.message);
   }
 });
 
-// Also serve HTTP so the app stays alive and can be health-checked.
-Deno.serve(() => {
-  return new Response(JSON.stringify({
+// Also serve HTTP so the app stays alive and can be health-checked or manually triggered.
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+
+  if (url.pathname === "/trigger") {
+    try {
+      const result = await switchIfNeeded();
+      lastRun = { ok: true, result, at: new Date().toISOString() };
+      return jsonResponse({ status: "ok", ...result }, 200);
+    } catch (e) {
+      lastRun = { ok: false, error: e.message, at: new Date().toISOString() };
+      return jsonResponse({ status: "error", error: e.message }, 500);
+    }
+  }
+
+  return jsonResponse({
     status: DAKBOARD_API_KEY ? "ok" : "misconfigured",
     service: "dakboard-switcher",
     apiKeyConfigured: Boolean(DAKBOARD_API_KEY),
-  }), {
-    status: DAKBOARD_API_KEY ? 200 : 503,
+    lastRun,
+  }, DAKBOARD_API_KEY ? 200 : 503);
+});
+
+function jsonResponse(body, status) {
+  return new Response(JSON.stringify(body), {
+    status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
-});
+}
