@@ -72,18 +72,11 @@ async function getSunTimes(now = new Date()) {
   return sunCache;
 }
 
-async function getCurrentScreen() {
-  const r = await fetchWithTimeout(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`);
-  if (!r.ok) throw new Error(`DAKboard device error: ${r.status}`);
-  const data = await r.json();
-  return data.screen_id;
-}
-
 async function setScreen(screenId) {
-  const r = await fetchWithTimeout(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`, {
+  const r = await fetchWithTimeout(`${DAKBOARD_API_BASE}/devices/${DEVICE_ID}?api_key=${DAKBOARD_API_KEY}`, 30000, {
     method: "PUT",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `screen_id=${screenId}`,
+    body: new URLSearchParams({ screen_id: screenId }),
   });
   if (!r.ok) throw new Error(`DAKboard switch error: ${r.status}`);
   return await r.json();
@@ -102,14 +95,9 @@ async function switchIfNeeded() {
 
   console.log(`[${now.toISOString()}] Pacific date: ${localDate}, Sunrise: ${sunrise.toISOString()}, Sunset: ${sunset.toISOString()}, Desired: ${label}`);
 
-  const current = await getCurrentScreen();
-  if (current !== desired) {
-    console.log(`Switching from ${current} to ${desired} (${label})`);
-    await setScreen(desired);
-    console.log("Switch complete.");
-  } else {
-    console.log(`Already on correct screen (${label}). No switch needed.`);
-  }
+  console.log(`Assigning ${desired} (${label})`);
+  await setScreen(desired);
+  console.log("Screen assignment complete.");
 
   return {
     success: true,
@@ -118,8 +106,6 @@ async function switchIfNeeded() {
     sunset: sunset.toISOString(),
     now: now.toISOString(),
     desired,
-    current,
-    switched: current !== desired,
   };
 }
 
