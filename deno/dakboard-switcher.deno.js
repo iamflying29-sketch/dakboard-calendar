@@ -1,9 +1,14 @@
 /**
  * DAKboard Sunrise/Sunset Screen Switcher — Deno Deploy Cron
  *
- * Runs every minute on Deno Deploy's free tier. Checks if the current time
- * is between sunrise and sunset for Tiburon, CA, and switches the DAKboard
- * device between Day and Night screens accordingly.
+ * Polls only during two wide UTC windows that cover all possible Tiburon
+ * sunrise/sunset times year-round:
+ *   - 12:00-16:00 UTC  =>  5:00am-9:00am Pacific (depending on DST)
+ *   - 00:00-05:00 UTC  =>  5:00pm-10:00pm Pacific (depending on DST)
+ *
+ * Inside those windows the cron fires every 15 minutes and issues the
+ * appropriate DAKboard screen assignment. Outside the windows it does
+ * nothing, so it does not waste Deno or DAKboard calls all day.
  *
  * Deployment:
  *   1. Create a new Deno Deploy app named "dakboard-switcher".
@@ -110,8 +115,9 @@ async function switchIfNeeded() {
 }
 
 // Deno.cron runs on Deno Deploy's free tier (included in free plan).
-// Check every minute for precise sunrise/sunset switching.
-Deno.cron("DAKboard Switcher", "* * * * *", {
+// Poll every 15 minutes inside the sunrise/sunset windows only.
+// 12-16 UTC covers morning Pacific (5-9am); 0-5 UTC covers evening Pacific (4-10pm).
+Deno.cron("DAKboard Switcher", "*/15 0-5,12-16 * * *", {
   backoffSchedule: [5000, 15000, 30000],
 }, async () => {
   try {
