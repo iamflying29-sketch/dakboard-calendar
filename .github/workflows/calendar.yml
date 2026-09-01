@@ -12,6 +12,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths:
+      - 'build.py'
+      - 'refresh_calendar.py'
+      - '.github/workflows/calendar.yml'
 
 permissions:
   contents: write
@@ -44,28 +48,6 @@ jobs:
         run: python -c "import refresh_calendar; refresh_calendar.refresh_dakboard()"
         env:
           DAKBOARD_API_KEY: ${{ secrets.DAKBOARD_API_KEY }}
-
-  weather-widget:
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install weather widget build deps
-        run: npm ci
-
-      - name: Build weather widget bundle (ES2020->ES2015 downlevel, no ES module dependency)
-        run: npm run build:weather
-
-      - name: Deploy weather widget to Deno Deploy (NOT GitHub Pages -- see AGENTS.md)
-        run: npm run deploy:weather-widget
-        env:
-          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
 
   sunrise-sunset-switcher:
     if: github.event_name != 'schedule'

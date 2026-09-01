@@ -40,7 +40,7 @@
  * Deployment: this file is deployed together with every other file in
  * weather-widget/ (flat, alongside main.ts) via
  * scripts/deploy-weather-widget.mjs, which runs automatically in
- * .github/workflows/build.yml on every push.
+ * .github/workflows/weather-widget.yml on Weather-related pushes.
  */
 
 const MIME = {

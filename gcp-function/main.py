@@ -9,7 +9,7 @@ from google.api_core.exceptions import NotFound
 ICS_URL = os.environ.get("ICS_URL")
 BUCKET = os.environ.get("BUCKET")
 REPO = os.environ.get("REPO", "iamflying29-sketch/dakboard-calendar")
-WORKFLOW_ID = os.environ.get("WORKFLOW_ID", "build.yml")
+WORKFLOW_ID = os.environ.get("WORKFLOW_ID", "calendar.yml")
 GH_TOKEN = os.environ.get("GH_TOKEN")
 STATE_FILE = "watcher_state.json"
 

@@ -24,7 +24,7 @@
 // scripts/deploy-weather-widget.mjs. See AGENTS.md for the full history.
 //
 // Run via `npm run build:weather` after editing any of the source files.
-// This also runs automatically in CI (.github/workflows/build.yml) before
+// This also runs automatically in CI (.github/workflows/weather-widget.yml) before
 // every deploy, so it can never go stale from a forgotten manual step.
 
 import * as esbuild from "esbuild";

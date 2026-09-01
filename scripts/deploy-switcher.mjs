@@ -1,6 +1,6 @@
 // Deploys deno/dakboard-switcher.deno.js to Deno Deploy as the
 // "dakboard-switcher" app. Run via `npm run deploy:switcher` (requires
-// DENO_DEPLOY_TOKEN env var). Wired into .github/workflows/build.yml so it
+// DENO_DEPLOY_TOKEN env var). Wired into .github/workflows/calendar.yml so it
 // deploys automatically on every push.
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";

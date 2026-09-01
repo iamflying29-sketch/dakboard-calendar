@@ -4,7 +4,7 @@
 // to Deno Deploy as the "dakboard-weather-widget" app.
 //
 // Run via `npm run deploy:weather-widget` (requires DENO_DEPLOY_TOKEN env
-// var). Runs automatically in .github/workflows/build.yml on every push, so
+// var). Runs via .github/workflows/weather-widget.yml on Weather-related pushes, so
 // the live widget can never drift from what's committed.
 
 import { readFile, readdir } from "node:fs/promises";

@@ -1,0 +1,35 @@
+name: Deploy Weather Widget
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'weather-widget/**'
+      - 'scripts/build-weather.mjs'
+      - 'scripts/deploy-weather-widget.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/weather-widget.yml'
+
+jobs:
+  weather-widget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install weather widget build deps
+        run: npm ci
+
+      - name: Build weather widget bundle (ES2020->ES2015 downlevel, no ES module dependency)
+        run: npm run build:weather
+
+      - name: Deploy weather widget to Deno Deploy (NOT GitHub Pages -- see AGENTS.md)
+        run: npm run deploy:weather-widget
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
