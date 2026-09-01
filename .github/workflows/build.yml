@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install Python deps
+        run: pip install requests
+
       - name: Build static HTML
         run: python build.py
 
@@ -36,6 +39,11 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs
           force_orphan: true
+
+      - name: Refresh DAKboard calendar widgets
+        run: python -c "import refresh_calendar; refresh_calendar.refresh_dakboard()"
+        env:
+          DAKBOARD_API_KEY: ${{ secrets.DAKBOARD_API_KEY }}
 
   weather-widget:
     if: github.event_name != 'schedule'
