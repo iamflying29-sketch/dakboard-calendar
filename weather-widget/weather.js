@@ -1458,10 +1458,12 @@ function render(data, fx) {
     // condition (which is locked to the 5-day "Today" condition). Later slots
     // use the per-slot consensus so the strip still evolves through the day.
     let hi;
+    let hIsDay;
     if (i === 0) {
       hi = todayInfo;
+      hIsDay = nowIsDay;
     } else {
-      const hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
+      hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
       const hCC = stripData.cloud_cover ? stripData.cloud_cover[idx] : null;
       const hPrecip = stripData.precipitation ? stripData.precipitation[idx] : null;
       // Failsafe consensus: use the cloudier of NWS gridpoint forecast and
@@ -1476,7 +1478,7 @@ function render(data, fx) {
     el.className = 'ww-hour';
     el.innerHTML = `
       <div class="hh">${m15 ? minuteLabel(stripData.time[idx], i) : hourLabel(stripData.time[idx], i)}</div>
-      ${iconSvgFor(hi.key, vars)}
+      ${iconSvgFor(iconKeyForDisplay(hi.key, hIsDay), vars)}
       <div class="ht">${Math.round(stripData.temperature_2m[idx])}°</div>
       <div class="hp">${pop != null && pop >= 15 ? pop + '%' : ''}</div>
     `;
