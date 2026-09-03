@@ -17,8 +17,8 @@
     <path d="M33 17h4v9h-4zM50 27l-7 7-3-3 7-7zM54 38h9v4h-9zM47 55l-3-3 7-7 3 3zM35 58h4v9h-4zM20 55l3-3 7 7-3 3zM17 38h9v4h-9zM20 27l7 7-3 3-7-7z" fill="#F8AF18"/>
   </g>
   <g id="Clouds" opacity="0.95">
-    <path d="M32 80c4-8 13-10 21-8 7 3 11 10 10 17h1c6 0 10 5 10 10s-4 10-10 10H40c-5 0-10-4-10-10 0-5 4-9 8-10v0c-1-4 0-7 3-9z" fill="url(#mcd_cloud2)" stroke="#E6EFFC" stroke-width="1.2"/>
-    <path d="M52 66c7-11 19-15 30-10 11 5 17 17 14 29h1c9-1 15 6 15 13s-6 14-15 14H47c-8 0-15-6-15-14 0-7 5-12 13-14v0c-1-5 1-11 6-14z" fill="url(#mcd_cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
+    <path d="M32 80c4-8 13-10 21-8 7 3 11 10 10 17c6 0 10 5 10 10s-4 10-10 10H40c-5 0-10-4-10-10 0-5 4-9 8-10c-1-4 0-7 3-9z" fill="url(#mcd_cloud2)" stroke="#E6EFFC" stroke-width="1.2"/>
+    <path d="M52 66c7-11 19-15 30-10 11 5 17 17 14 29c9-1 15 6 15 13s-6 14-15 14H47c-8 0-15-6-15-14 0-7 5-12 13-14c-1-5 1-11 6-14z" fill="url(#mcd_cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
   </g>
 </g>
 </svg>
