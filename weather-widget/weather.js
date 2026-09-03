@@ -1367,6 +1367,23 @@ function render(data, fx) {
   const currentHourCode = currentHourIdx >= 0 ? hourly.weather_code[currentHourIdx] : cur.weather_code;
   const currentHourCC = currentHourIdx >= 0 ? hourly.cloud_cover[currentHourIdx] : cur.cloud_cover;
 
+  // The top "Current" condition label intentionally matches the 5-day "Today"
+  // row, which always uses the daytime consensus. But the ICON must reflect
+  // whether it is actually night right now, otherwise the Night screen shows
+  // a sun for clear/partly/mostly-cloudy conditions. Derive the real isDay
+  // from Open-Meteo's current reading (0/1), then switch only the icon key.
+  const nowIsDay = !!cur.is_day;
+  const iconKeyForDisplay = (key, isDay) => {
+    if (isDay) return key;
+    const nightMap = {
+      'clear-day': 'clear-night',
+      'mostly-clear-day': 'mostly-clear-night',
+      'partly-cloudy-day': 'partly-cloudy-night',
+      'mostly-cloudy-day': 'mostly-cloudy-night',
+    };
+    return nightMap[key] || key;
+  };
+
   let info = todayInfo;
   let displayKey = FORCED_SCENE || todayInfo.key;
 
@@ -1408,7 +1425,8 @@ function render(data, fx) {
     '--bolt': cssVar('--bolt'), '--fg': cssVar('--fg'),
   };
 
-  document.getElementById('nowIcon').innerHTML = iconSvgFor(displayKey, vars);
+  const iconKey = iconKeyForDisplay(displayKey, nowIsDay);
+  document.getElementById('nowIcon').innerHTML = iconSvgFor(iconKey, vars);
   document.getElementById('nowTemp').textContent = fToLabel(cur.temperature_2m);
   document.getElementById('nowCond').textContent = info.label;
   document.getElementById('nowSub').textContent = `Feels like ${fToLabel(cur.apparent_temperature)}`;
@@ -1420,8 +1438,9 @@ function render(data, fx) {
   // Do NOT override the atmosphere cloud cover with a separate live estimate,
   // because that would make the CGI disagree with the condition label/icon.
   // setCondition() already loads the matching KEY_TABLE parameters.
+  // Use the night-aware icon key so the CGI also matches the displayed icon.
   lastLiveCloudCover = null;
-  if (fx) fx.setCondition(displayKey);
+  if (fx) fx.setCondition(iconKey);
 
   // 15-minute forecast strip: current slot + next 11 (covers ~3 hours ahead)
   // Falls back to hourly data if minutely_15 is unavailable.
