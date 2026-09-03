@@ -13,7 +13,7 @@
     <clipPath id="mcd_clip"><rect width="128" height="128" fill="white"/></clipPath>
   </defs>
   <g id="Sun">
-    <g transform="translate(35,40) scale(0.55) translate(-64,-64)">
+    <g transform="translate(43,62) scale(0.55) translate(-64,-64)">
       <circle cx="64" cy="64" r="19.5" fill="url(#mcd_sun)" stroke="#F8AF18" stroke-width="2.7"/>
       <g id="Rays">
         <path d="M61 19C61 17.3431 62.3431 16 64 16C65.6568 16 67 17.3431 67 19V33C67 34.6569 65.6568 36 64 36C62.3431 36 61 34.6569 61 33V19Z" fill="#F8AF18"/>
