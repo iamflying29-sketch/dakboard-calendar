@@ -1346,12 +1346,9 @@ function render(data, fx) {
   const sunState = applySkyForNow(daily);
   if (fx) fx.setSunState(sunState.frac, sunState.elevation);
 
-  // The top "Current" condition MUST agree with the 5-day forecast's "Today"
-  // entry. Experience showed that a separate instantaneous Open-Meteo
-  // `current.weather_code` snapshot could disagree with the same model's own
-  // daily daytime summary, producing a current condition that said "Clear"
-  // while Today said clouds (or vice-versa). Compute the Today condition once
-  // and use it for both the top "Now" and the first daily row.
+  // The 5-day forecast's "Today" entry summarizes the full daylight period.
+  // Keep that daily consensus separate from the instantaneous Current/NOW
+  // condition so weather forecast later today is never presented as happening now.
   const todayNwsCC = avgDaylightSkyCover(skyCoverIntervals, sunriseFor(TODAY_IDX), sunsetFor(TODAY_IDX));
   const todayDayCode = daylightWeatherCode(hourly, sunriseFor(TODAY_IDX), sunsetFor(TODAY_IDX));
   const todayInfo = resolveCondition(
@@ -1361,18 +1358,17 @@ function render(data, fx) {
     null
   );
 
-  // Hourly/minutely strip still needs a per-slot consensus resolver below.
-  const _skyCoverNow = skyCoverAt(skyCoverIntervals, new Date());
-  const currentHourIdx = findCurrentHourlyIndex(hourly, new Date());
-  const currentHourCode = currentHourIdx >= 0 ? hourly.weather_code[currentHourIdx] : cur.weather_code;
-  const currentHourCC = currentHourIdx >= 0 ? hourly.cloud_cover[currentHourIdx] : cur.cloud_cover;
-
-  // The top "Current" condition label intentionally matches the 5-day "Today"
-  // row, which always uses the daytime consensus. But the ICON must reflect
-  // whether it is actually night right now, otherwise the Night screen shows
-  // a sun for clear/partly/mostly-cloudy conditions. Derive the real isDay
-  // from Open-Meteo's current reading (0/1), then switch only the icon key.
+  // Current and the first NOW forecast slot use the instantaneous observation.
+  // The later strip slots use their own minutely/hourly forecast samples below.
+  const skyCoverNow = skyCoverAt(skyCoverIntervals, new Date());
   const nowIsDay = !!cur.is_day;
+  const currentInfo = resolveCondition(
+    cur.weather_code,
+    nowIsDay,
+    skyCoverNow,
+    cur.cloud_cover,
+    cur.precipitation
+  );
   const iconKeyForDisplay = (key, isDay) => {
     if (isDay) return key;
     const nightMap = {
@@ -1384,8 +1380,8 @@ function render(data, fx) {
     return nightMap[key] || key;
   };
 
-  let info = todayInfo;
-  let displayKey = FORCED_SCENE || todayInfo.key;
+  let info = currentInfo;
+  let displayKey = FORCED_SCENE || currentInfo.key;
 
   // Forced scene (e.g. ?scene=flash-flood) should display that scene's label,
   // not the current real-world weather label.
@@ -1434,10 +1430,7 @@ function render(data, fx) {
     `H:${Math.round(daily.temperature_2m_max[TODAY_IDX])}°  L:${Math.round(daily.temperature_2m_min[TODAY_IDX])}°`;
 
   lastDisplayKey = displayKey;
-  // The top "Current" condition is now intentionally the same as 5-day Today.
-  // Do NOT override the atmosphere cloud cover with a separate live estimate,
-  // because that would make the CGI disagree with the condition label/icon.
-  // setCondition() already loads the matching KEY_TABLE parameters.
+  // Keep the atmosphere synchronized with the instantaneous Current condition.
   // Use the night-aware icon key so the CGI also matches the displayed icon.
   lastLiveCloudCover = null;
   if (fx) fx.setCondition(iconKey);
@@ -1454,13 +1447,12 @@ function render(data, fx) {
   for (let i = 0; i < 12; i++) {
     const idx = startIdx + i;
     if (idx >= stripData.time.length) break;
-    // The "NOW" slot must show the exact same condition as the top current
-    // condition (which is locked to the 5-day "Today" condition). Later slots
-    // use the per-slot consensus so the strip still evolves through the day.
+    // The "NOW" slot uses the same instantaneous observation as Current.
+    // Later slots use their own per-slot forecast samples.
     let hi;
     let hIsDay;
     if (i === 0) {
-      hi = todayInfo;
+      hi = currentInfo;
       hIsDay = nowIsDay;
     } else {
       hIsDay = stripData.is_day ? !!stripData.is_day[idx] : true;
@@ -1493,8 +1485,8 @@ function render(data, fx) {
   const span = Math.max(1, globalMax - globalMin);
   for (let i = 0; i < 5; i++) {
     const idx = TODAY_IDX + i;
-    // Reuse the already-computed Today condition for the first row so the top
-    // "Current" condition and 5-day "Today" row are pixel-for-pixel identical.
+    // Reuse the full-day consensus only for the first daily row. Current/NOW
+    // independently reflect the instantaneous observation.
     let di;
     if (i === 0) {
       di = todayInfo;
