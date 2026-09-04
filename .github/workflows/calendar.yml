@@ -15,8 +15,6 @@ on:
     paths:
       - 'build.py'
       - 'refresh_calendar.py'
-      - 'deno/dakboard-switcher.deno.js'
-      - 'scripts/deploy-switcher.mjs'
       - '.github/workflows/calendar.yml'
 
 permissions:
@@ -51,18 +49,3 @@ jobs:
         env:
           DAKBOARD_API_KEY: ${{ secrets.DAKBOARD_API_KEY }}
 
-  sunrise-sunset-switcher:
-    if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Deploy sunrise/sunset screen switcher to Deno Deploy
-        run: npm run deploy:switcher
-        env:
-          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
