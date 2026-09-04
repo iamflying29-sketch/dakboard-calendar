@@ -12,9 +12,9 @@
  * Deployment:
  *   1. Sign up at https://deno.com/deploy (free plan is $0).
  *   2. Create a new project named e.g. "noaa-storm-proxy".
- *   3. Link this GitHub repo OR paste the contents of this file as the entrypoint.
+ *   3. Deploy this file directly to Deno Deploy (e.g. via the dashboard or deployctl).
  *   4. Note the deployment URL (e.g. https://noaa-storm-proxy-<hash>.deno.dev).
- *   5. In weather-widget/weather.js, set NOAA_STORMS_URL to that URL.
+ *   5. In the local weather-widget/weather.js, set NOAA_STORMS_URL to that URL.
  */
 
 export default {

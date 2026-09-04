@@ -2,12 +2,5 @@
   "name": "dakboard-calendar",
   "private": true,
   "version": "1.0.0",
-  "description": "Build tooling for the DAKboard Guest Bathroom weather/calendar widgets.",
-  "scripts": {
-    "build:weather": "node scripts/build-weather.mjs",
-    "deploy:weather-widget": "node scripts/deploy-weather-widget.mjs"
-  },
-  "devDependencies": {
-    "esbuild": "^0.28.2"
-  }
+  "description": "Build tooling for the DAKboard Guest Bathroom calendar."
 }
