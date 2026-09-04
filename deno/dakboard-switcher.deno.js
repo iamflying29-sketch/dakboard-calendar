@@ -6,9 +6,9 @@
  *   - 12:00-16:00 UTC  =>  5:00am-9:00am Pacific (depending on DST)
  *   - 00:00-05:00 UTC  =>  5:00pm-10:00pm Pacific (depending on DST)
  *
- * Inside those windows the cron fires every 15 minutes and issues the
- * appropriate DAKboard screen assignment. Outside the windows it does
- * nothing, so it does not waste Deno or DAKboard calls all day.
+ * The cron itself fires every 15 minutes 24/7 so Deno Deploy's parser can not
+ * silently drop a complex multi-window expression. The handler checks the hour
+ * and returns early outside the windows, so no DAKboard/sun-API calls are wasted.
  *
  * Deployment:
  *   1. Create a new Deno Deploy app named "dakboard-switcher".
@@ -28,7 +28,12 @@ const LONGITUDE = -122.4949685;
 const SUN_API_URL = "https://api.sunrise-sunset.org/v2";
 const DAKBOARD_API_BASE = "https://dakboard.com/api/2";
 const TIME_ZONE = "America/Los_Angeles";
+
+// Morning window covers Pacific sunrise (5-9am); evening window covers Pacific sunset (5-10pm).
+const SWITCH_HOURS = new Set([0, 1, 2, 3, 4, 5, 12, 13, 14, 15, 16]);
+
 let sunCache = null;
+let lastCron = null;
 let lastRun = null;
 
 async function fetchWithTimeout(url, ms = 15000, options = {}) {
@@ -87,6 +92,10 @@ async function setScreen(screenId) {
   return await r.json();
 }
 
+function shouldSwitch(now = new Date()) {
+  return SWITCH_HOURS.has(now.getUTCHours());
+}
+
 async function switchIfNeeded() {
   if (!DAKBOARD_API_KEY) {
     throw new Error("DAKBOARD_API_KEY not set");
@@ -114,16 +123,24 @@ async function switchIfNeeded() {
   };
 }
 
-// Deno.cron runs on Deno Deploy's free tier (included in free plan).
-// Poll every 15 minutes inside the sunrise/sunset windows only.
-// 12-16 UTC covers morning Pacific (5-9am); 0-5 UTC covers evening Pacific (4-10pm).
-Deno.cron("DAKboard Switcher", "*/15 0-5,12-16 * * *", {
+// Deno.cron runs on Deno Deploy's free tier.
+// Fire every 15 minutes 24/7, but only act during the sunrise/sunset windows.
+// This avoids relying on complex hour-range cron syntax that some parsers may mishandle.
+Deno.cron("DAKboard Switcher", "*/15 * * * *", {
   backoffSchedule: [5000, 15000, 30000],
 }, async () => {
+  const now = new Date();
   try {
-    lastRun = { ok: true, result: await switchIfNeeded(), at: new Date().toISOString() };
+    if (!shouldSwitch(now)) {
+      lastCron = { ok: true, skipped: true, at: now.toISOString() };
+      return;
+    }
+    const result = await switchIfNeeded();
+    lastRun = { ok: true, result, at: now.toISOString() };
+    lastCron = { ok: true, skipped: false, at: now.toISOString() };
   } catch (e) {
-    lastRun = { ok: false, error: e.message, at: new Date().toISOString() };
+    lastRun = { ok: false, error: e.message, at: now.toISOString() };
+    lastCron = { ok: false, error: e.message, at: now.toISOString() };
     console.error("Switcher error:", e.message);
   }
 });
@@ -147,6 +164,7 @@ Deno.serve(async (req) => {
     status: DAKBOARD_API_KEY ? "ok" : "misconfigured",
     service: "dakboard-switcher",
     apiKeyConfigured: Boolean(DAKBOARD_API_KEY),
+    lastCron,
     lastRun,
   }, DAKBOARD_API_KEY ? 200 : 503);
 });
