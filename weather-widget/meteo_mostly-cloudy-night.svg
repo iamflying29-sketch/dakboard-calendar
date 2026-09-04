@@ -1,19 +1,19 @@
 <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g id="mostly-cloudy-night" clip-path="url(#mcn_clip)">
   <defs>
-    <linearGradient id="mcn_moon" x1="32" y1="24" x2="32" y2="56" gradientUnits="userSpaceOnUse">
+    <linearGradient id="mcn_moon" x1="35" y1="37" x2="35" y2="73" gradientUnits="userSpaceOnUse">
       <stop stop-color="#86C3DB"/><stop offset="1" stop-color="#72B9D5"/>
     </linearGradient>
-    <linearGradient id="mcn_cloud" x1="64" y1="42" x2="64" y2="90" gradientUnits="userSpaceOnUse">
+    <linearGradient id="mcn_cloud" x1="64" y1="39" x2="64" y2="89" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F3F7FE"/><stop offset="1" stop-color="#E6EFFC"/>
     </linearGradient>
     <clipPath id="mcn_clip"><rect width="128" height="128" fill="white"/></clipPath>
   </defs>
-  <g id="Moon" transform="translate(18,20)">
-    <path d="M24 28c-2 11 7 20 17 20-2 6-8 9-14 9-9 0-15-7-15-16 0-8 5-14 12-15z" fill="url(#mcn_moon)" stroke="#72B9D5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="Moon">
+    <circle cx="35" cy="55" r="18" fill="url(#mcn_moon)" stroke="#72B9D5" stroke-width="1.5"/>
   </g>
   <g id="Clouds">
-    <path d="M52 66c7-11 19-15 30-10 11 5 17 17 14 29c9-1 15 6 15 13s-6 14-15 14H47c-8 0-15-6-15-14 0-7 5-12 13-14c-1-5 1-11 6-14z" fill="url(#mcn_cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
+    <path d="M55.2623 48.4746C60.1227 40.6111 70.2975 37.38 78.8151 40.9434C87.3214 44.5023 92.138 54.0026 89.903 62.9648C97.4203 63.2791 103.5 68.9917 103.5 76.0283C103.5 82.8395 97.7717 88.4997 90.9772 88.5H37.9537C31.1275 88.5018 25.2029 83.1709 24.5592 76.3604C23.9158 69.5518 28.7369 63.2124 35.443 61.9453C35.0256 56.6239 37.1258 51.7168 41.1051 49.0127C45.0951 46.3014 50.4459 46.1537 54.5797 48.6396L55.2623 48.4746Z" fill="url(#mcn_cloud)" stroke="#E6EFFC" stroke-width="1.2"/>
   </g>
 </g>
 </svg>
