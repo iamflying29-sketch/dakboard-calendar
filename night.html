@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>September 2026</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:transparent;
+font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+-webkit-font-smoothing:antialiased;overflow:hidden}
+.w{width:100%;height:100%;display:flex;flex-direction:column}
+.h{display:flex;align-items:baseline;padding:16px 18px 10px;gap:10px;flex-shrink:0}
+.h b{font-size:48px;font-weight:700;color:#f59e0b;letter-spacing:-.4px}
+.h span{font-size:48px;font-weight:300;color:#92400e}
+.dr{display:grid;grid-template-columns:repeat(7,1fr);flex-shrink:0;border-bottom:3px solid #b45309}
+.d{font-size:24px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px;text-align:center;padding:10px 0}
+.g{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat(5,1fr)}
+.c{padding:6px 8px 4px;border-right:1px solid #1a1a1a;border-bottom:1px solid #1a1a1a;overflow:hidden;min-height:0}
+.c:nth-child(7n){border-right:none}
+.c.e{opacity:.2}
+.n{display:block;font-size:32px;font-weight:600;color:#f59e0b;text-align:right;line-height:1;padding:3px 5px 5px 0}
+.nt{display:inline-flex;align-items:center;justify-content:center;min-width:48px;height:48px;border-radius:50%;
+background:#78350f;color:#fef3c7!important;font-weight:700;font-size:28px;float:right;padding:0 8px}
+.ev{font-size:22px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,0.1);border-left:5px solid #b45309;
+border-radius:5px;padding:4px 8px;margin-top:4px;white-space:normal;word-break:break-word;overflow:hidden;line-height:1.3}
+.em{font-size:18px;font-weight:700;color:#f59e0b;padding:2px 6px;margin-top:2px}
+.su .n{color:#ef4444}.sa .n{color:#60a5fa}.e .n{color:#92400e}.nt{color:#fef3c7!important}
+</style></head><body data-year="2026" data-month="9">
+<div class="w">
+<div class="h"><b>September</b> <span>2026</span></div>
+<div class="dr"><div class="d">Sun</div><div class="d">Mon</div><div class="d">Tue</div><div class="d">Wed</div><div class="d">Thu</div><div class="d">Fri</div><div class="d">Sat</div></div>
+<div class="g"><div class="c e"></div><div class="c e"></div><div class="c" data-day="1"><span class="n">1</span></div><div class="c" data-day="2"><span class="n">2</span></div><div class="c" data-day="3"><span class="n">3</span></div><div class="c" data-day="4"><span class="n">4</span></div><div class="c t sa" data-day="5"><span class="n nt">5</span></div><div class="c su" data-day="6"><span class="n">6</span></div><div class="c" data-day="7"><span class="n">7</span><div class="ev">Labor Day</div></div><div class="c" data-day="8"><span class="n">8</span></div><div class="c" data-day="9"><span class="n">9</span></div><div class="c" data-day="10"><span class="n">10</span></div><div class="c" data-day="11"><span class="n">11</span></div><div class="c sa" data-day="12"><span class="n">12</span></div><div class="c su" data-day="13"><span class="n">13</span></div><div class="c" data-day="14"><span class="n">14</span></div><div class="c" data-day="15"><span class="n">15</span></div><div class="c" data-day="16"><span class="n">16</span></div><div class="c" data-day="17"><span class="n">17</span></div><div class="c" data-day="18"><span class="n">18</span></div><div class="c sa" data-day="19"><span class="n">19</span></div><div class="c su" data-day="20"><span class="n">20</span></div><div class="c" data-day="21"><span class="n">21</span></div><div class="c" data-day="22"><span class="n">22</span></div><div class="c" data-day="23"><span class="n">23</span></div><div class="c" data-day="24"><span class="n">24</span></div><div class="c" data-day="25"><span class="n">25</span></div><div class="c sa" data-day="26"><span class="n">26</span></div><div class="c su" data-day="27"><span class="n">27</span></div><div class="c" data-day="28"><span class="n">28</span></div><div class="c" data-day="29"><span class="n">29</span></div><div class="c" data-day="30"><span class="n">30</span></div><div class="c e"></div><div class="c e"></div><div class="c e"></div></div>
+</div>
+<script>
+// Safety net: re-verify "today" using the browser's own clock (in Pacific
+// time) instead of trusting the baked-in build date. This protects against
+// a delayed/stale GitHub Actions build or a cached page still showing
+// yesterday's or tomorrow's date as "today".
+(function() {
+  try {
+    var parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', year: 'numeric', month: 'numeric', day: 'numeric'
+    }).formatToParts(new Date());
+    var get = function(t) { return parseInt(parts.find(function(p) { return p.type === t; }).value, 10); };
+    var realYear = get('year'), realMonth = get('month'), realDay = get('day');
+    var bakedYear = parseInt(document.body.getAttribute('data-year'), 10);
+    var bakedMonth = parseInt(document.body.getAttribute('data-month'), 10);
+    if (realYear !== bakedYear || realMonth !== bakedMonth) return; // grid is for a different month; can't fix client-side
+    document.querySelectorAll('.c.t').forEach(function(c) { c.classList.remove('t'); });
+    document.querySelectorAll('.n.nt').forEach(function(n) { n.classList.remove('nt'); });
+    var correct = document.querySelector('.c[data-day="' + realDay + '"]');
+    if (correct) {
+      correct.classList.add('t');
+      var n = correct.querySelector('.n');
+      if (n) n.classList.add('nt');
+    }
+  } catch (e) { /* ignore, fall back to baked-in date */ }
+})();
+</script>
+</body></html>
