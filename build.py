@@ -2,8 +2,13 @@
 """
 Build static calendar HTML files from the iCloud ICS feed.
 Outputs day.html and night.html into the docs/ directory for GitHub Pages.
-Run by GitHub Actions daily at midnight Pacific.
+Each page carries this month AND next month plus a small script that flips
+the visible month and the "today" highlight at exactly local midnight, so the
+display never depends on when a rebuild happens to run. Rebuilds are
+triggered by iCloud changes, a 00:00 Pacific Cloud Scheduler job, and the
+GitHub cron backstop.
 """
+import json
 import os
 import urllib.request
 from datetime import datetime, date, timedelta
@@ -105,7 +110,19 @@ def get_month_events(events, year, month):
     return month_events
 
 
-def build_html(theme, today, month_events, year, month):
+def next_month(year, month):
+    return (year + 1, 1) if month == 12 else (year, month + 1)
+
+
+def midnight_ms(d):
+    """UTC epoch ms of local midnight (America/Los_Angeles) starting date d."""
+    return int(datetime(d.year, d.month, d.day, tzinfo=LOCAL_TZ).timestamp() * 1000)
+
+
+def month_panel(today, month_events, year, month, visible):
+    """One month's header + weekday row + grid. Only the panel for today's
+    month is visible and carries the baked "today" highlight; the others are
+    pre-rendered for the client-side midnight flip."""
     day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
     _, num_days = monthrange(year, month)
 
@@ -116,6 +133,104 @@ def build_html(theme, today, month_events, year, month):
         flat.append(0)
     weeks = [flat[i:i + 7] for i in range(0, len(flat), 7)]
     nr = len(weeks)
+    is_this_month = (today.year, today.month) == (year, month)
+
+    dow = "".join(f'<div class="d">{n}</div>' for n in day_names)
+
+    cells = ""
+    for week in weeks:
+        for ci, dn in enumerate(week):
+            if dn == 0:
+                cells += '<div class="c e"></div>'
+                continue
+            is_today = is_this_month and dn == today.day
+            cls = "c t" if is_today else "c"
+            ev = ""
+            if dn in month_events:
+                for en in month_events[dn][:2]:
+                    esc = en.replace("&", "&amp;").replace("<", "&lt;")
+                    ev += f'<div class="ev">{esc}</div>'
+                if len(month_events[dn]) > 2:
+                    ev += f'<div class="em">+{len(month_events[dn]) - 2}</div>'
+            ns = (f'<span class="n nt">{dn}</span>' if is_today
+                  else f'<span class="n">{dn}</span>')
+            xc = " su" if ci == 0 else (" sa" if ci == 6 else "")
+            cells += f'<div class="{cls}{xc}" data-day="{dn}">{ns}{ev}</div>'
+
+    style = "" if visible else ' style="display:none"'
+    return (f'<div class="w" data-ym="{year}-{month}" data-title="{first_date.strftime("%B %Y")}"{style}>\n'
+            f'<div class="h"><b>{first_date.strftime("%B")}</b> <span>{year}</span></div>\n'
+            f'<div class="dr">{dow}</div>\n'
+            f'<div class="g" style="grid-template-rows:repeat({nr},1fr)">{cells}</div>\n'
+            f'</div>')
+
+
+# Midnight flip, ES5 only (the DAKboard WebView is old: no let/const/arrow/
+# template literals/classList/forEach/find/Intl here). B = [utcMs, y, m, d]
+# for every America/Los_Angeles midnight in the baked range, computed at build
+# time with zoneinfo (DST-correct); the last row is an end sentinel.
+# Date.getTime() is UTC-based, so the device's own time zone is irrelevant.
+# A timer is aimed at the next midnight (+20 ms) but never sleeps more than
+# 30 s, and a separate 30 s interval re-checks, so sleep/drift self-corrects.
+FLIP_SCRIPT = r"""<script>
+(function () {
+  var B = __TABLE__;
+  var CHECK_MS = 30000, EARLY_PAD_MS = 20, timer = null, shown = '';
+  function hasC(el, c) { return (' ' + el.className + ' ').indexOf(' ' + c + ' ') >= 0; }
+  function setC(el, c, on) {
+    if (!el) return;
+    var h = hasC(el, c);
+    if (on && !h) { el.className = el.className + ' ' + c; }
+    else if (!on && h) { el.className = (' ' + el.className + ' ').replace(' ' + c + ' ', ' ').replace(/^\s+|\s+$/g, ''); }
+  }
+  function show(y, m, d) {
+    var key = y + '-' + m + '-' + d;
+    if (key === shown) return;
+    var ps = document.querySelectorAll('.w[data-ym]'), target = null, i, j, cs, n, on;
+    for (i = 0; i < ps.length; i++) { if (ps[i].getAttribute('data-ym') === y + '-' + m) target = ps[i]; }
+    if (!target) return;
+    for (i = 0; i < ps.length; i++) {
+      ps[i].style.display = (ps[i] === target) ? '' : 'none';
+      cs = ps[i].querySelectorAll('.c[data-day]');
+      for (j = 0; j < cs.length; j++) {
+        on = (ps[i] === target) && cs[j].getAttribute('data-day') === String(d);
+        setC(cs[j], 't', on);
+        n = cs[j].querySelector('.n');
+        setC(n, 'nt', on);
+      }
+    }
+    document.body.setAttribute('data-year', String(y));
+    document.body.setAttribute('data-month', String(m));
+    if (target.getAttribute('data-title')) document.title = target.getAttribute('data-title');
+    shown = key;
+  }
+  function tick() {
+    var now = new Date().getTime(), wait = CHECK_MS, i;
+    try {
+      for (i = B.length - 2; i >= 0; i--) { if (now >= B[i][0]) break; }
+      if (i >= 0 && now < B[B.length - 1][0]) {
+        show(B[i][1], B[i][2], B[i][3]);
+        wait = B[i + 1][0] - now + EARLY_PAD_MS;
+      } else if (i < 0) {
+        wait = B[0][0] - now + EARLY_PAD_MS;
+      }
+    } catch (e) { /* keep the baked page as-is */ }
+    if (!(wait > 0)) wait = EARLY_PAD_MS;
+    if (wait > CHECK_MS) wait = CHECK_MS;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(tick, wait);
+  }
+  tick();
+  setInterval(tick, CHECK_MS);
+  if (document.addEventListener) document.addEventListener('visibilitychange', tick, false);
+  if (window.addEventListener) { window.addEventListener('focus', tick, false); window.addEventListener('pageshow', tick, false); }
+})();
+</script>"""
+
+
+def build_html(theme, today, months):
+    """months: [(year, month, month_events), ...]; the first entry is today's
+    month (visible), the rest are pre-rendered for the midnight flip."""
 
     # Theme palette
     if theme == "night":
@@ -135,27 +250,21 @@ def build_html(theme, today, month_events, year, month):
         dc = "#3b82f6"
         sun_c = "#dc2626"; sat_c = "#2563eb"
 
-    dow = "".join(f'<div class="d">{n}</div>' for n in day_names)
+    panels = "\n".join(
+        month_panel(today, ev, y, m, visible=(i == 0))
+        for i, (y, m, ev) in enumerate(months))
 
-    cells = ""
-    for week in weeks:
-        for ci, dn in enumerate(week):
-            if dn == 0:
-                cells += '<div class="c e"></div>'
-                continue
-            is_today = dn == today.day
-            cls = "c t" if is_today else "c"
-            ev = ""
-            if dn in month_events:
-                for en in month_events[dn][:2]:
-                    esc = en.replace("&", "&amp;").replace("<", "&lt;")
-                    ev += f'<div class="ev">{esc}</div>'
-                if len(month_events[dn]) > 2:
-                    ev += f'<div class="em">+{len(month_events[dn]) - 2}</div>'
-            ns = (f'<span class="n nt">{dn}</span>' if is_today
-                  else f'<span class="n">{dn}</span>')
-            xc = " su" if ci == 0 else (" sa" if ci == 6 else "")
-            cells += f'<div class="{cls}{xc}" data-day="{dn}">{ns}{ev}</div>'
+    # Day-boundary table for FLIP_SCRIPT: every local midnight from the 1st of
+    # the first baked month through the midnight after the last baked day.
+    d = date(months[0][0], months[0][1], 1)
+    ly, lm = months[-1][0], months[-1][1]
+    end = date(ly, lm, monthrange(ly, lm)[1]) + timedelta(days=1)
+    rows = []
+    while d < end:
+        rows.append([midnight_ms(d), d.year, d.month, d.day])
+        d += timedelta(days=1)
+    rows.append([midnight_ms(end), 0, 0, 0])
+    script = FLIP_SCRIPT.replace("__TABLE__", json.dumps(rows, separators=(",", ":")))
 
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -172,7 +281,7 @@ font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,
 .h span{{font-size:48px;font-weight:300;color:{tm}}}
 .dr{{display:grid;grid-template-columns:repeat(7,1fr);flex-shrink:0;border-bottom:3px solid {hb}}}
 .d{{font-size:24px;font-weight:700;color:{tm};text-transform:uppercase;letter-spacing:1px;text-align:center;padding:10px 0}}
-.g{{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:repeat({nr},1fr)}}
+.g{{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,1fr)}}
 .c{{padding:6px 8px 4px;border-right:1px solid {gb};border-bottom:1px solid {gb};overflow:hidden;min-height:0}}
 .c:nth-child(7n){{border-right:none}}
 .c.e{{opacity:.2}}
@@ -183,38 +292,9 @@ background:{tbg};color:{tt}!important;font-weight:700;font-size:28px;float:right
 border-radius:5px;padding:4px 8px;margin-top:4px;white-space:normal;word-break:break-word;overflow:hidden;line-height:1.3}}
 .em{{font-size:18px;font-weight:700;color:{dc};padding:2px 6px;margin-top:2px}}
 .su .n{{color:{sun_c}}}.sa .n{{color:{sat_c}}}.e .n{{color:{tm}}}.nt{{color:{tt}!important}}
-</style></head><body data-year="{year}" data-month="{month}">
-<div class="w">
-<div class="h"><b>{today.strftime("%B")}</b> <span>{today.year}</span></div>
-<div class="dr">{dow}</div>
-<div class="g">{cells}</div>
-</div>
-<script>
-// Safety net: re-verify "today" using the browser's own clock (in Pacific
-// time) instead of trusting the baked-in build date. This protects against
-// a delayed/stale GitHub Actions build or a cached page still showing
-// yesterday's or tomorrow's date as "today".
-(function() {{
-  try {{
-    var parts = new Intl.DateTimeFormat('en-US', {{
-      timeZone: 'America/Los_Angeles', year: 'numeric', month: 'numeric', day: 'numeric'
-    }}).formatToParts(new Date());
-    var get = function(t) {{ return parseInt(parts.find(function(p) {{ return p.type === t; }}).value, 10); }};
-    var realYear = get('year'), realMonth = get('month'), realDay = get('day');
-    var bakedYear = parseInt(document.body.getAttribute('data-year'), 10);
-    var bakedMonth = parseInt(document.body.getAttribute('data-month'), 10);
-    if (realYear !== bakedYear || realMonth !== bakedMonth) return; // grid is for a different month; can't fix client-side
-    document.querySelectorAll('.c.t').forEach(function(c) {{ c.classList.remove('t'); }});
-    document.querySelectorAll('.n.nt').forEach(function(n) {{ n.classList.remove('nt'); }});
-    var correct = document.querySelector('.c[data-day="' + realDay + '"]');
-    if (correct) {{
-      correct.classList.add('t');
-      var n = correct.querySelector('.n');
-      if (n) n.classList.add('nt');
-    }}
-  }} catch (e) {{ /* ignore, fall back to baked-in date */ }}
-}})();
-</script>
+</style></head><body data-year="{today.year}" data-month="{today.month}">
+{panels}
+{script}
 </body></html>"""
 
 
@@ -223,19 +303,23 @@ def main():
 
     today = today_local()
     year, month = today.year, today.month
+    # This month + next month, so the page can flip itself at local midnight
+    # on the last day of the month without waiting for a rebuild.
+    ym = [(year, month), next_month(year, month)]
 
     print(f"Fetching iCloud ICS feed...")
     try:
         ics_text = fetch_ics()
         all_events = parse_ics_events(ics_text)
-        month_events = get_month_events(all_events, year, month)
-        print(f"  Parsed {len(all_events)} events, {len(month_events)} days with events this month")
+        months = [(y, m, get_month_events(all_events, y, m)) for (y, m) in ym]
+        print(f"  Parsed {len(all_events)} events, {len(months[0][2])} days with events this month, "
+              f"{len(months[1][2])} next month")
     except Exception as e:
         print(f"  WARNING: ICS fetch failed ({e}), building with no events")
-        month_events = {}
+        months = [(y, m, {}) for (y, m) in ym]
 
     for theme in ("day", "night"):
-        html = build_html(theme, today, month_events, year, month)
+        html = build_html(theme, today, months)
         path = os.path.join(OUT_DIR, f"{theme}.html")
         with open(path, "w", encoding="utf-8") as f:
             f.write(html)
